@@ -304,3 +304,77 @@ def test_skipped_required_job_is_never_a_builder_fix() -> None:
         pushed_sha=SHA,
     )
     assert result.action == "ask"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("conclusion", ["cancelled", "skipped", "neutral"])
+def test_failed_run_consequences_do_not_hide_real_failure(conclusion: str) -> None:
+    result = decide(
+        "failure",
+        [job(), job(identifier=2, name="dependent", conclusion=conclusion)],
+        [run(conclusion="failure")],
+        [job(conclusion="success")],
+        history(),
+        [],
+        {},
+        repo(),
+        Limits(),
+        pushed_sha=SHA,
+    )
+    assert (result.klass, result.action) == ("change", "fix")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("conclusion", ["cancelled", "skipped", "neutral"])
+def test_five_blocked_jobs_never_become_mass_failure(conclusion: str) -> None:
+    result = decide(
+        "blocked",
+        [job(identifier=i, name=f"job-{i}", conclusion=conclusion) for i in range(5)],
+        [run()],
+        None,
+        history(),
+        [],
+        {},
+        repo(),
+        Limits(),
+        pushed_sha=SHA,
+    )
+    assert result.action == "ask" and result.klass != "mass_failure"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("conclusion", ["startup_failure", "action_required"])
+def test_optional_run_does_not_override_required_failure(conclusion: str) -> None:
+    result = decide(
+        "failure",
+        [job()],
+        [run(conclusion="failure"), run(identifier=2, workflow="Optional", conclusion=conclusion)],
+        [job(conclusion="success")],
+        history(),
+        [],
+        {},
+        repo(),
+        Limits(),
+        pushed_sha=SHA,
+    )
+    assert (result.klass, result.action) == ("change", "fix")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("attempt", [False, True])
+def test_old_base_failure_does_not_hide_introduced_failure(attempt: bool) -> None:
+    old = job(run_id=10)
+    newer = job(run_id=10 if attempt else 11, attempt=2 if attempt else 1, conclusion="success")
+    result = decide(
+        "failure",
+        [job()],
+        [run(conclusion="failure")],
+        [old, newer],
+        history(),
+        [],
+        {},
+        repo(),
+        Limits(),
+        pushed_sha=SHA,
+    )
+    assert (result.klass, result.action) == ("change", "fix")

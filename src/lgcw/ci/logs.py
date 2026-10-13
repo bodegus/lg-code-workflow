@@ -20,7 +20,7 @@ def _clip(text: str, size: int) -> str:
 
 def trim_job_log(raw: str, failed_steps: Sequence[str], max_bytes: int = 8192) -> str:
     """Keep first-error context and the failing group's tail within a UTF-8 byte cap."""
-    lines = [_TIMESTAMP.sub("", _ANSI.sub("", line)) for line in raw.splitlines()]
+    lines = [_TIMESTAMP.sub("", _ANSI.sub("", line)) for line in raw.lstrip("\ufeff").splitlines()]
     groups: list[tuple[str, list[str]]] = []
     active: list[str] = []
     name = ""
@@ -30,8 +30,7 @@ def trim_job_log(raw: str, failed_steps: Sequence[str], max_bytes: int = 8192) -
                 groups.append((name, active))
             name, active = line.removeprefix("##[group]"), []
         elif line.startswith("##[endgroup]"):
-            groups.append((name, active))
-            name, active = "", []
+            continue
         else:
             active.append(line)
     if active:
@@ -44,7 +43,7 @@ def trim_job_log(raw: str, failed_steps: Sequence[str], max_bytes: int = 8192) -
         ),
         None,
     )
-    if chosen is None:
+    if chosen is None or not any(ERROR_START.search(line) for line in chosen):
         chosen = next(
             (body for _, body in groups if any(ERROR_START.search(x) for x in body)), lines
         )

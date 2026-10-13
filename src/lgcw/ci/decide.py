@@ -19,6 +19,29 @@ from lgcw.models.config import Limits, RepoConfig
 from lgcw.models.github import JobView, RunView
 
 
+def _genuine_failure(job: JobView) -> bool:
+    return job.conclusion in {"failure", "timed_out", "startup_failure"} or (
+        job.conclusion == "cancelled"
+        and bool(TIMEOUT_ANNOTATION.search("\n".join(job.annotations)))
+    )
+
+
+def _latest_base_jobs(jobs: Sequence[JobView]) -> tuple[JobView, ...]:
+    # GitHub run IDs increase at creation. Select a workflow's complete run/attempt as a unit,
+    # never a separate latest successful or failed job that could mix historical runs.
+    newest: dict[str, tuple[int, int]] = {}
+    for job in jobs:
+        if job.status == "completed":
+            newest[job.workflow] = max(
+                newest.get(job.workflow, (0, 0)), (job.run_id, job.run_attempt)
+            )
+    return tuple(
+        job
+        for job in jobs
+        if job.status == "completed" and (job.run_id, job.run_attempt) == newest.get(job.workflow)
+    )
+
+
 def _job_rule(
     job: JobView,
     base: Sequence[JobView],
@@ -99,11 +122,16 @@ def decide(
     classes = history.reruns_by_class_head.get(pushed_sha, {})
     if status == "success":
         return result("flaky" if classes.get("flaky", 0) else None, "proceed_note")
-    current = latest_runs(runs, pushed_sha)
+    workflows = {check.workflow for check in repo.required_checks}
+    current = tuple(
+        run for run in latest_runs(runs, pushed_sha) if not workflows or run.workflow in workflows
+    )
     if runs and not current:
         return result("superseded", "wait")
     if any(run.conclusion == "action_required" for run in current):
         return result("awaiting_approval", "ask")
+    if status == "blocked":
+        return result("unclassified", "ask")
     if any(run.conclusion == "startup_failure" for run in current):
         action: CiAction = (
             "fix" if any(path.startswith(".github/workflows/") for path in diff_paths) else "ask"
@@ -114,10 +142,17 @@ def decide(
     if not failing:
         return result("unclassified", "ask")
     decisions: list[CiDecision] = []
+    failures = [job for job in failing if _genuine_failure(job)]
+    failed_runs = {(job.workflow, job.run_id, job.run_attempt) for job in failures}
+    baseline = _latest_base_jobs(base_jobs or ())
     for job in failing:
-        klass, action = _job_rule(
-            job, base_jobs or (), log_tails.get(job.job_id, ""), repo, len(failing)
-        )
+        if (
+            job.conclusion in {"cancelled", "skipped", "neutral"}
+            and not _genuine_failure(job)
+            and (job.workflow, job.run_id, job.run_attempt) in failed_runs
+        ):
+            continue
+        klass, action = _job_rule(job, baseline, log_tails.get(job.job_id, ""), repo, len(failures))
         used = classes.get(klass, 0)
         if action == "rerun" and klass in {"infra", "resources", "flaky"} and used >= 1:
             action = "fix" if klass == "resources" else "ask"

@@ -116,3 +116,31 @@ def test_deep_keeps_three_lenses_even_when_ops_also_changed() -> None:
         previous=previous,
     )
     assert result.level == "deep" and result.lenses == ("general", "security", "tests")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "name",
+    [
+        "package-lock.json",
+        "nested/uv.lock",
+        "Cargo.lock",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+    ],
+)
+def test_excluded_lockfile_is_dependency_evidence(name: str) -> None:
+    from lgcw.review.diffstat import parse_numstat
+
+    stat = parse_numstat(f"1\t1\t{name}\n", ("**/*",))
+    assert pick_level(stat, (), (), repo(), ReviewThresholds(), Limits()).level == "deep"
+    assert stat.changed_lines == 0
+
+
+@pytest.mark.unit
+def test_fully_excluded_diff_is_not_no_review() -> None:
+    from lgcw.review.diffstat import parse_numstat
+
+    stat = parse_numstat("1\t0\tgenerated/data.json\n", ("**/*",))
+    assert pick_level(stat, (), (), repo(), ReviewThresholds(), Limits()).level != "none"

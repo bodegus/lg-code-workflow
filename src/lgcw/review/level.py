@@ -18,6 +18,11 @@ _DEEP_GLOBS = (
     "**/CLAUDE.md",
     "**/pyproject.toml",
     "**/package.json",
+    "**/*.lock*",
+    "**/*-lock.json",
+    "**/*-lock.yaml",
+    "**/go.sum",
+    "**/npm-shrinkwrap.json",
     "**/requirements*.txt",
     "**/Cargo.toml",
     "**/go.mod",
@@ -38,7 +43,7 @@ def pick_level(
     previous: LevelDecision | None = None,
 ) -> LevelDecision:
     """Select the first matching review tier, respecting owner overrides and previous depth."""
-    paths = [PurePosixPath(path) for path in diff.paths]
+    paths = [PurePosixPath(path) for path in (*diff.paths, *diff.excluded_paths)]
 
     def matches(globs: Sequence[str]) -> bool:
         return any(path.full_match(pattern) for path in paths for pattern in globs)
@@ -63,7 +68,7 @@ def pick_level(
     ):
         level = "standard"
         reasons.append("diff size, operations risk or source changed without tests")
-    elif all(
+    elif diff.files and all(
         any(
             path.full_match(pattern)
             for pattern in (*repo.docs_globs, *repo.tests_globs, *repo.excluded_globs)

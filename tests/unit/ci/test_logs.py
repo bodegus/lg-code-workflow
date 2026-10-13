@@ -58,3 +58,14 @@ def test_unnamed_error_group_is_retained_before_cleanup() -> None:
     raw = "##[group]Unknown\n##[error]broken\nexit code 1\n##[endgroup]\n##[group]Cleanup\ndone"
     output = trim_job_log(raw, ["Other"])
     assert "broken" in output and "exit code 1" in output and "done" not in output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("failed_steps", [("npm test",), ("Post cleanup",), ("unknown",)])
+def test_real_layout_keeps_output_after_endgroup(failed_steps: tuple[str, ...]) -> None:
+    path = Path(__file__).parents[2] / "fixtures" / "ci" / "real-layout.log"
+    output = trim_job_log(path.read_text(), failed_steps)
+    assert "FAILED actual_test" in output
+    assert "Process completed with exit code 1" in output
+    assert "CLEANUP-SHOULD-NOT-APPEAR" not in output
+    assert "\ufeff" not in output

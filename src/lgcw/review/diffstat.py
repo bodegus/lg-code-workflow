@@ -17,6 +17,7 @@ def parse_numstat(text: str, excluded_globs: Sequence[str]) -> DiffStat:
     """
     records = iter(text.split("\0") if "\0" in text else text.splitlines())
     files: list[FileChange] = []
+    excluded: list[str] = []
     for record in records:
         if not record:
             continue
@@ -48,4 +49,6 @@ def parse_numstat(text: str, excluded_globs: Sequence[str]) -> DiffStat:
             raise ValueError("invalid numstat line counts")
         if not any(parsed.full_match(pattern) for pattern in excluded_globs):
             files.append(FileChange(path=path, added=additions, deleted=deletions))
-    return DiffStat(files=tuple(files))
+        else:
+            excluded.append(path)
+    return DiffStat(files=tuple(files), excluded_paths=tuple(excluded))

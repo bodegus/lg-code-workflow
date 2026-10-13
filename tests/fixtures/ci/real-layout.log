@@ -1,0 +1,9 @@
+﻿2026-10-13T00:00:00Z ##[group]Run npm test
+2026-10-13T00:00:00Z npm test
+2026-10-13T00:00:00Z shell: /usr/bin/bash -e {0}
+2026-10-13T00:00:00Z ##[endgroup]
+2026-10-13T00:00:01Z FAILED actual_test: expected 2, received 3
+2026-10-13T00:00:01Z ##[error]Process completed with exit code 1.
+2026-10-13T00:00:02Z ##[group]Post cleanup
+2026-10-13T00:00:02Z ##[endgroup]
+2026-10-13T00:00:02Z CLEANUP-SHOULD-NOT-APPEAR

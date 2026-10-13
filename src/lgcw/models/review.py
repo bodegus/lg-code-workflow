@@ -82,6 +82,7 @@ class DiffStat(Strict):
     """Diff statistics used to size review."""
 
     files: tuple[FileChange, ...]
+    excluded_paths: tuple[str, ...] = ()
 
     @property
     def changed_lines(self) -> int:
