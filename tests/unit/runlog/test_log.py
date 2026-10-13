@@ -169,3 +169,17 @@ def test_posted_preserves_marker_after_semantic_header_redaction(tmp_path: Path)
     assert len(parsed) == 1 and isinstance(parsed[0], BlockedMarker)
     assert parsed[0].reason == "Authorization: [REDACTED]"
     assert "b3BhcXVlLXNlY3JldA==" not in content
+
+
+@pytest.mark.unit
+def test_next_turn_seq_survives_reopen_and_preserves_paid_evidence(tmp_path: Path) -> None:
+    log = RunLog(tmp_path)
+    assert log.next_turn_seq() == 1
+    original = log.turn(1, "builder", prompt(), outcome(), None)
+    content = original.read_bytes()
+    log.turn(4, "reviewer", prompt(), None, "interrupted")
+    resumed = RunLog(tmp_path)
+    assert resumed.next_turn_seq() == 5
+    resumed.turn(resumed.next_turn_seq(), "builder", prompt(), outcome(), None)
+    assert original.read_bytes() == content
+    assert resumed.next_turn_seq() == 6

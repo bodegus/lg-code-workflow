@@ -23,7 +23,7 @@ background in [research/README.md](research/README.md).
 ## Global Constraints
 
 - Python `>=3.13`; build backend hatchling; package `lgcw` under `src/`; console script `lgcw = "lgcw.cli:main"`.
-- Runtime dependencies exactly: `langgraph>=1.2.15,<1.3`, `openai-codex==0.162.1`, `githubkit==0.16.1`, `pydantic>=2.12`. Any other runtime dependency needs a `choosing-dependencies` entry in decisions.md in the same PR.
+- Runtime dependencies exactly: `langgraph>=1.2.15,<1.3`, `openai-codex==0.162.1`, `openai-codex-cli-bin==0.162.1` (D-034), `githubkit==0.16.1`, `pydantic>=2.12`. Any other runtime dependency needs a `choosing-dependencies` entry in decisions.md in the same PR.
 - Dev dependencies: `pytest>=8.4`, `pytest-asyncio>=1.4`, `pytest-cov>=5`, `ruff`, `mypy`, `pre-commit`.
 - ruff: `line-length = 100`, `target-version = "py313"`, lint `select = ["E","F","I","N","W","UP","B"]`; mypy `strict = true`, `plugins = ["pydantic.mypy"]`.
 - pytest: `asyncio_mode = "auto"`, `addopts = "--strict-markers --strict-config"`, markers `unit` and `live`, exactly one per test; live tests run only with `LGCW_LIVE=1`.
@@ -36,7 +36,7 @@ background in [research/README.md](research/README.md).
 - Review thresholds: light `< 100` changed lines and `< 8` files; standard 100–499 lines or ≥ 8 files; deep ≥ 500 lines or any risk class or a new dependency.
 - Trimmed CI log ≤ 8,192 bytes per job and ≤ 16,384 bytes in total; PR body ≤ 60,000 characters.
 - No code path calls a merge endpoint or the `mergePullRequest` mutation.
-- Codex app-server environment exactly `PATH`, `HOME`, `LANG`, `CODEX_HOME`; `approval_mode=deny_all` and the role's sandbox on every turn.
+- Codex app-server environment exactly `PATH`, `HOME`, `LANG`, `CODEX_HOME`; `approval_mode=deny_all` on every turn and the complete role sandbox/network policy immediately before each turn (D-034).
 
 ## Review Focus
 
@@ -384,12 +384,19 @@ T9 proof: three missing-module collection errors first. Wheel inspection exposed
 - Consumes: `HarnessPort`, models (T1, T9), `require_live` (T5).
 - Produces: `build_codex_env(config: WorkflowConfig, base: Mapping[str, str]) -> dict[str, str]` (exactly `PATH`, `HOME`, `LANG`, `CODEX_HOME`); `CodexHarness(config: WorkflowConfig, *, allow_live: bool = False)` (one `AsyncCodex` per instance; `start_session` → `thread_start(cwd, sandbox, approval_mode=deny_all, model, ...)`; `run_turn` → `thread_resume` when needed, then a turn with the skill reference and text, `output_schema=strict_json_schema(output)`, heartbeat on every streamed event, `interrupt()` on cancellation, one retry on `HarnessOutputError`; maps SDK errors to the harness error family); `rollout_path(codex_home: Path, session_id: str) -> Path | None` (glob `sessions/**/rollout-*<session_id>*.jsonl`).
 
-- [ ] **Step 1: Spike (live, the builder runs it after the owner has created the workflow's Codex login, < 1 hour):** in a temp git repo, with a fresh `CODEX_HOME`, check (a) a turn input of skill reference + text, (b) `output_schema` on a resumed thread, (c) `usage` fields incl. cached input, (d) rollout file location, (e) `read_only` sandbox refuses a write, (f) interrupt on cancel. Record each answer and the exact SDK calls in a new decisions.md entry. If (a) or (b) fails, choose the fallback named there before Step 2.
-- [ ] **Step 2: Write the failing tests**: `test_env_is_minimal` (`GH_TOKEN` and `OPENAI_API_KEY` in base are absent from the result), `test_codex_harness_refuses_without_live`, `test_rollout_path_found` (temp tree), and the live `test_codex_smoke` (start builder session, run a turn returning a 2-field strict model, resume and run again, assert `usage.input_tokens > 0` and a rollout file exists).
-- [ ] **Step 3: Run** → FAIL.
-- [ ] **Step 4: Implement** `env.py` and `codex.py` per the spike's findings.
-- [ ] **Step 5: Run** `make check` → PASS; `LGCW_LIVE=1 uv run pytest tests/live/test_codex_smoke.py -m live` → PASS (the builder runs it; output in the PR).
-- [ ] **Step 6: Commit** `feat(harness): Codex SDK harness`.
+- [x] **Step 1: Spike (live, the builder runs it after the owner has created the workflow's Codex login, < 1 hour):** in a temp git repo, with a fresh `CODEX_HOME`, check (a) a turn input of skill reference + text, (b) `output_schema` on a resumed thread, (c) `usage` fields incl. cached input, (d) rollout file location, (e) `read_only` sandbox refuses a write, (f) interrupt on cancel. Record each answer and the exact SDK calls in a new decisions.md entry. If (a) or (b) fails, choose the fallback named there before Step 2.
+- [x] **Step 2: Write the failing tests**: `test_env_is_minimal` (`GH_TOKEN` and `OPENAI_API_KEY` in base are absent from the result), `test_codex_harness_refuses_without_live`, `test_rollout_path_found` (temp tree), and the live `test_codex_smoke` (start builder session, run a turn returning a 2-field strict model, resume and run again, assert `usage.input_tokens > 0` and a rollout file exists).
+- [x] **Step 3: Run** → FAIL.
+- [x] **Step 4: Implement** `env.py` and `codex.py` per the spike's findings.
+- [x] **Step 5: Run** `make check` → PASS; `LGCW_LIVE=1 uv run pytest tests/live/test_codex_smoke.py -m live` → PASS (the builder runs it; output in the PR).
+- [x] **Step 6: Commit** `feat(harness): Codex SDK harness`.
+
+T10 qualification refinements (D-034): use the owner-created dedicated login without copying
+credentials; fresh first-turn handle vs post-materialization resume; explicit thread policy
+immediately before each turn preserves builder network access. Usage includes nullable
+context_input_tokens separately from per-turn cumulative counter deltas. Additional files:
+harness/records.py, tests/fakes/codex.py and its unit boundary tests, typings/codex_cli_bin.pyi,
+and RunLog.next_turn_seq plus its restart regression (reviewer carry-forward R2-X3).
 
 ### Task T11: Run log, redaction and report
 

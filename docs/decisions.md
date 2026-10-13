@@ -625,3 +625,53 @@ our own code. Research references point into [research/](research/).
 - **Live follow-up:** the reviewer explicitly allowed the persistent T5 fixture/plan follow-up in
   this PR. It now uses the owner-approved family-calendar target and recognizable branch prefix;
   its named command also checks branch/body reads and any-state discovery after fixture closure.
+
+## D-034 T10 official SDK runtime isolation, policy and measured usage
+
+- **Plugin check (step 1):** D-002 and research §5 reject the private/experimental LangChain
+  ChatGPT-login bridge. LangGraph supplies control, timeouts and heartbeats, not a typed Codex
+  app-server session/skill/output-schema implementation. Its graph stays outside paid calls.
+- **SDK check (step 2):** official openai-codex 0.162.1 (Apache-2.0) provides AsyncCodex,
+  SkillInput, schema-bearing turns, streaming, resume and interrupt. Use its public APIs only.
+  Its pinned openai-codex-cli-bin 0.162.1 dependency (same upstream) publicly exports
+  bundled_codex_path/bundled_path_dir. Declare that existing transitive package directly because
+  the launcher now imports those helpers; no new package version is introduced. A two-function
+  checked stub describes the upstream helpers, which lack py.typed; no type-check suppression.
+- **Environment:** CodexConfig.env merges inherited keys. Public launch_args_override with
+  /usr/bin/env -i replaces the actual Rust process environment with exactly PATH, HOME, LANG,
+  CODEX_HOME. Preserve the runtime's public helper PATH directory. Free real-PID inspection
+  confirmed the exact four keys with inherited synthetic token variables excluded. Thin stdlib
+  fcntl lock prevents two workflow-owned servers on the dedicated home; SDK close releases it.
+- **Policy:** deny_all is sent on every start/resume/turn. The high-level turn workspace_write
+  preset creates a new policy with network=false, losing D-012's builder networking. Therefore
+  start the fresh first turn with an explicitly configured thread, or explicitly thread_resume
+  immediately before every subsequent turn with its role sandbox/network, then omit the resetting
+  turn preset. Returned resumed effective policy was workspaceWrite/network=true/approval=never.
+  Reviewer/verifier always use read_only/network=false. Reject role/spec mismatches.
+  This refines design §5's “set on every turn”: complete thread policy immediately before the
+  turn, rather than the SDK preset that changes its meaning. No full-access or auto_review path.
+- **Recovery:** cache the fresh thread handle only until first dispatch; thread_start alone has
+  no resumable rollout. Cross-process resume after a completed turn works; an unmaterialized
+  session maps to HarnessSessionLostError. Refuse to dispatch into an observed in-progress turn.
+  T14 must reconcile an interrupted/unknown paid dispatch before selecting a fresh builder.
+- **Cancellation:** shield the turn/start reply so a cancellation between dispatch and handle
+  receipt can still interrupt that exact handle. If the reply/interrupt fails, close the owned
+  server without redispatching. A delayed-reply fake-SDK regression failed before this fix.
+- **Output/accounting:** one schema-correction turn at most, no auth/quota/transport retry. Public
+  typed notifications supply heartbeat, completion, final answer and measured cumulative counters.
+  Own-session rollout supplies the pre-turn cumulative baseline, including across server restart.
+  Usage input/cached/output/reasoning are deltas; new nullable context_input_tokens is the latest
+  model-request input for the T14 context threshold, distinct from summed billing. Never estimate
+  a missing usage value. A resumed thread without its own accounting baseline never dispatches.
+  RunLog.next_turn_seq derives the next evidence filename from all retained
+  role artifacts across restarts (R2-X3 carry-forward), and turn() still refuses overwrites.
+- **Evidence:** docs/spikes/2026-10-13-codex-{environment,policy,paid}.md; four tiny spike turns,
+  named live-smoke runs (four turns each, including the final dispatch-cancellation hardening).
+  Real agent tools denied .git/config and read-only workspace writes;
+  an active shell command was interrupted on cancellation. The bare command/exec RPC's weaker
+  .git behavior is irrelevant to this adapter because it never uses that RPC.
+- **Limits:** cancellation/invalid-output failures still carry unknown usage at the existing
+  error boundary; raw own-session rollouts retain evidence. Quota/auth are covered through the
+  public SDK fake rather than spending/revoking a login. This decision does not qualify T14–T17.
+- **Revisit when:** SDK gains an explicit network-bearing turn sandbox, an environment-replacement
+  option or typed runtime helpers; or Phase 1 evidence contradicts the measured policy/accounting.

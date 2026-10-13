@@ -47,6 +47,7 @@ class Usage(Strict):
     output_tokens: int = Field(ge=0)
     reasoning_output_tokens: int = Field(ge=0)
     context_window: int | None = Field(gt=0)
+    context_input_tokens: int | None = Field(default=None, ge=0)
 
 
 class TurnOutcome[M: BaseModel](Strict):
