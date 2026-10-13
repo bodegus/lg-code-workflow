@@ -53,6 +53,14 @@ async def test_terminate_owned_runtime_and_detached_child(
         else:
             await terminate_runtime(pidfile)
         process.wait(timeout=3)
+        child_pid = int(childfile.read_text())
+        async with asyncio.timeout(3):
+            while True:
+                try:
+                    os.kill(child_pid, 0)
+                except ProcessLookupError:
+                    break
+                await asyncio.sleep(0.02)
         await asyncio.sleep(1.1)
         assert not delayed.exists()
     finally:
@@ -99,3 +107,52 @@ async def test_terminate_runtime_refuses_self_or_foreign_parent(tmp_path: Path) 
         parent.kill()
         parent.wait(timeout=3)
     await terminate_runtime(tmp_path / "absent.pid")
+
+
+@pytest.mark.unit
+async def test_process_failing_recheck_is_resumed_not_left_stopped(tmp_path: Path) -> None:
+    pidfile, childfile = tmp_path / "runtime.pid", tmp_path / "child.pid"
+    script = (
+        "import subprocess,sys,time,pathlib; "
+        "child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(10)']); "
+        f"pathlib.Path({str(childfile)!r}).write_text(str(child.pid)); time.sleep(10)"
+    )
+    parent = subprocess.Popen(
+        [sys.executable, "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    pidfile.write_text(str(parent.pid))
+    try:
+        async with asyncio.timeout(3):
+            while not childfile.exists():
+                await asyncio.sleep(0.01)
+        child = int(childfile.read_text())
+        queries = 0
+
+        async def inventory(cwd: Path) -> dict[int, int]:
+            nonlocal queries
+            queries += 1
+            return {parent.pid: os.getpid(), child: parent.pid if queries == 1 else 1}
+
+        await terminate_runtime(pidfile, inspect_parents=inventory)
+        parent.wait(timeout=3)
+        async with asyncio.timeout(1):
+            while True:
+                state = subprocess.run(
+                    ("/bin/ps", "-p", str(child), "-o", "state="),
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=1,
+                ).stdout
+                if "T" not in state:
+                    break
+                await asyncio.sleep(0.02)
+    finally:
+        if childfile.exists():
+            try:
+                os.kill(int(childfile.read_text()), 9)
+            except ProcessLookupError:
+                pass
+        if parent.poll() is None:
+            parent.kill()
+        parent.wait(timeout=3)

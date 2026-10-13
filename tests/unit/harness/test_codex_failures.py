@@ -29,10 +29,10 @@ from tests.unit.harness.test_codex_boundary import Answer, prompt, spec
         (CodexErrorInfoValue.unauthorized, HarnessAuthError),
         (CodexErrorInfoValue.usage_limit_exceeded, HarnessQuotaError),
         (CodexErrorInfoValue.rate_limit_exceeded, HarnessQuotaError),
-        (CodexErrorInfoValue.internal_server_error, HarnessError),
+        (CodexErrorInfoValue.internal_server_error, HarnessAuthError),
     ],
 )
-def test_structured_failure_code_precedes_prose(
+def test_specific_code_precedes_prose_generic_code_uses_required_fallback(
     code: CodexErrorInfoValue, kind: type[HarnessError]
 ) -> None:
     error = TurnError(
@@ -116,3 +116,35 @@ async def test_initialization_and_close_errors_still_release_lock(tmp_path: Path
         sdk.close_error = None
         await harness.close()
         await replacement.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "wire,message,kind",
+    [
+        ({"httpConnectionFailed": {"httpStatusCode": 401}}, "opaque failure", HarnessAuthError),
+        (
+            {"responseTooManyFailedAttempts": {"httpStatusCode": 429}},
+            "opaque failure",
+            HarnessQuotaError,
+        ),
+        (
+            {"responseStreamConnectionFailed": {"httpStatusCode": 429}},
+            "opaque failure",
+            HarnessQuotaError,
+        ),
+        (
+            {"responseStreamDisconnected": {"httpStatusCode": 401}},
+            "opaque failure",
+            HarnessAuthError,
+        ),
+        ("other", "remote failure (401)", HarnessAuthError),
+        ("internalServerError", "remote HTTP 429", HarnessQuotaError),
+        ({"httpConnectionFailed": {"httpStatusCode": 404}}, "transport closed", HarnessError),
+    ],
+)
+def test_structured_http_status_then_keyword_fallback(
+    wire: object, message: str, kind: type[HarnessError]
+) -> None:
+    error = TurnError(message=message, codex_error_info=CodexErrorInfo.model_validate(wire))
+    assert type(map_turn_error(error)) is kind

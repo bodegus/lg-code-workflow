@@ -116,4 +116,13 @@ def map_turn_error(error: TurnError) -> HarnessError:
         CodexErrorInfoValue.rate_limit_exceeded,
     ):
         return HarnessQuotaError(error.message)
-    return HarnessError(error.message)
+    data = info.model_dump(mode="json", by_alias=True)
+    if isinstance(data, dict):
+        for candidate in [data, *data.values()]:
+            if isinstance(candidate, dict):
+                status = candidate.get("httpStatusCode")
+                if status == 401:
+                    return HarnessAuthError(error.message)
+                if status == 429:
+                    return HarnessQuotaError(error.message)
+    return map_error(RuntimeError(error.message))

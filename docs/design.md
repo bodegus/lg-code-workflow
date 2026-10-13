@@ -270,7 +270,10 @@ Step details:
 - **Limits:** Codex has no turn cap, so each agent node has a LangGraph `TimeoutPolicy`
   (`run_timeout`, `idle_timeout` refreshed by a heartbeat on every Codex event) and the harness
   interrupts the turn on cancel and closes its verified owned process tree, because SDK
-  interrupt alone can leave a shell running (D-034 R1). Defaults: build 3,600 s run / 600 s idle; review 1,200 s / 300 s;
+  interrupt alone can leave a shell running (D-034 R1). Reparented children and rapid fork
+  chains can escape the bounded ancestry inventory; workspace quiescence is not guaranteed.
+  T14 must re-verify actual content after cancellation before gate/commit and bind the committed
+  candidate to its measured gate before push (D-034 R2). Defaults: build 3,600 s run / 600 s idle; review 1,200 s / 300 s;
   verify 300 s / 120 s.
 - **Errors:** login problems → `ask` ("re-login"); quota or rate limit → `ask` with the reset time
   when available, otherwise explicitly report reset time unavailable (D-034 R1 deferral);

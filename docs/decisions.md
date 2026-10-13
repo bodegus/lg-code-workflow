@@ -732,3 +732,33 @@ our own code. Research references point into [research/](research/).
   policy, subsequent resumes send the same policy, and each turn sends deny_all. No claim that
   a cached thread can change roles or networking. The turn preset remains omitted to preserve
   the selected builder network policy.
+
+### D-034 R2 error boundaries and cleanup scope (review 6155287748)
+
+- **Control flow:** redacted cleanup diagnostics use an instance logger. Process/SDK shutdown
+  errors are collected into HarnessError for close(), while cancellation preserves its original
+  CancelledError and startup preserves its original authentication/startup exception. SDK close
+  and the home-lock release still run. Fake cleanup-port failures and SDK-close failures prove
+  the original exception type, task.cancelled(), token-safe logs and replacement-lock admission.
+- **HTTP classification:** specific unauthorized/usage-limit/rate-limit codes keep precedence;
+  typed nested httpStatusCode 401/429 maps to Auth/Quota, then generic codes fall back to the
+  keyword mapper. The optional R1 generic-code fixture had incorrectly required plain
+  HarnessError despite authentication prose; R2 explicitly requires fallback. Its expected
+  class is now the more specific HarnessAuthError. No assertion, skip or deadline was loosened.
+- **Termination proof:** local real-process tests poll os.kill(child_pid, 0) until
+  ProcessLookupError, under a fixed three-second bound, in addition to checking delayed writes.
+  Removing descendant SIGKILL now fails both the normal-inventory and inventory-failure cases;
+  SIGSTOP alone no longer passes. Fixture teardown still cleans up the deliberately stranded child.
+- **Scope/obligation (R2-F4):** ownership covers the direct child runtime and descendants still
+  reachable in the kernel pid/ppid inventory. An already reparented child (nohup/double fork or
+  a parent that exited) and a fork chain faster than the three passes can escape. Cleanup does
+  not guarantee workspace quiescence. T14 must re-verify actual diff/content after a cancelled
+  builder before gate or commit; a cancelled/unknown dispatch must not reuse a stale handoff.
+  It must also bind the committed candidate to measured gate content before pushing. These are
+  required integration obligations, not a stronger isolation claim for T10.
+- **Optional PID hardening (R2-F5):** a previously stopped process failing the ownership
+  re-check receives SIGCONT rather than staying stopped. A fake-inventory/real-child regression
+  proves restoration. Already absent root PIDs are skipped. Start-time identity is deferred:
+  current authority remains PID plus direct-parent/descendant ancestry, with the review's
+  acknowledged millisecond PID-reuse caveat. No claim of protection against that race or of
+  containment for reparented daemons; later container/cgroup isolation remains the stronger path.

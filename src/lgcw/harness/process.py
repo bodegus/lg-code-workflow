@@ -1,4 +1,4 @@
-"""Bounded cleanup of the owned app-server and its descendants, including detached groups."""
+"""Bounded cleanup of the owned runtime and descendants still reachable by ancestry."""
 
 from __future__ import annotations
 
@@ -44,7 +44,11 @@ async def terminate_runtime(
 
     A detached shell can leave its process group while still being a descendant. Stop parents
     before collecting again so they cannot race cleanup by spawning new children. No command
-    lines or environments are inspected. Never signal self, an ancestor or a foreign parent.
+    lines or environments are inspected. Never select self, an ancestor or a foreign root.
+
+    Children already reparented to init/launchd are outside this ownership view. A fork chain
+    faster than the three freeze passes can also escape. This is lifecycle cleanup, not proof
+    of a quiet workspace: code must re-verify content after cancellation before gate/commit.
     """
     if not pidfile.exists():
         return
@@ -75,5 +79,7 @@ async def terminate_runtime(
         for pid in sorted(stopped - {root}, reverse=True):
             if pid in descendants:
                 _signal(pid, signal.SIGKILL)
+            else:
+                _signal(pid, signal.SIGCONT)  # restore a process that failed the ownership re-check
         _signal(root, signal.SIGKILL)
         pidfile.unlink(missing_ok=True)

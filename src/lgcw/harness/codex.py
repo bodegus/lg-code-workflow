@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import fcntl
+import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import IO
 from uuid import UUID, uuid4
@@ -44,6 +45,7 @@ from lgcw.live import require_live
 from lgcw.models.base import strict_json_schema
 from lgcw.models.config import WorkflowConfig
 from lgcw.models.harness import SessionRef, SessionSpec, TurnInput, TurnOutcome
+from lgcw.runlog import redact
 
 
 def rollout_path(codex_home: Path, session_id: str) -> Path | None:
@@ -84,9 +86,12 @@ class CodexHarness:
         *,
         allow_live: bool = False,
         sdk_factory: Callable[[CodexConfig], AsyncCodex] = AsyncCodex,
+        runtime_cleanup: Callable[[Path], Awaitable[None]] = terminate_runtime,
     ) -> None:
         require_live("CodexHarness", allow_live)
+        self._logger = logging.getLogger(__name__)
         self._config = config
+        self._terminate_runtime = runtime_cleanup
         env = build_codex_env(config, os.environ)
         # CodexConfig.env merges the parent. env -i replaces it at the actual Rust process.
         path_dir = bundled_path_dir()
@@ -122,6 +127,28 @@ class CodexHarness:
         self._specs: dict[str, SessionSpec] = {}
         self._active: dict[str, AsyncTurnHandle | None] = {}
 
+    def _cleanup_diagnostic(self, stage: str, error: Exception) -> None:
+        self._logger.warning(
+            "Codex cleanup %s (%s): %s", stage, type(error).__name__, redact(str(error))
+        )
+
+    async def _shutdown_runtime(self) -> None:
+        failure: Exception | None = None
+        try:
+            await self._terminate_runtime(self._runtime_pid)
+        except Exception as exc:
+            failure = exc
+            self._cleanup_diagnostic("process inventory", exc)
+        finally:
+            try:
+                await self._codex.close()
+            except Exception as exc:
+                self._cleanup_diagnostic("SDK close", exc)
+                if failure is None:
+                    failure = exc
+        if failure is not None:
+            raise HarnessError("runtime cleanup failed: " + str(failure)) from None
+
     async def _ensure_started(self) -> None:
         async with self._start_lock:
             if self._closed:
@@ -141,10 +168,9 @@ class CodexHarness:
                 self._started = True
             except BaseException:
                 try:
-                    try:
-                        await terminate_runtime(self._runtime_pid)
-                    finally:
-                        await self._codex.close()
+                    await self._shutdown_runtime()
+                except Exception:
+                    pass  # diagnostics are recorded; preserve the original startup/cancel cause
                 finally:
                     lock.close()
                     self._lock = None
@@ -354,17 +380,19 @@ class CodexHarness:
                                 ):
                                     break
                                 await asyncio.sleep(0.01)
-            except Exception:
-                # No receipt or failed interrupt: close the owned server; never redispatch.
-                await asyncio.shield(self.close())
+            except Exception as exc:
+                self._cleanup_diagnostic("cancel interrupt", exc)
                 if dispatch is not None:
                     dispatch.cancel()
                     await asyncio.gather(dispatch, return_exceptions=True)
             finally:
-                # SDK interrupt can end the turn while its shell keeps running. Terminate
-                # the verified owned runtime tree before returning the workspace to code.
+                # Close reachable runtime work. Later code checks content because already
+                # reparented children can escape this bounded inventory (D-034 R2).
                 if handle is not None or dispatch is not None:
-                    await asyncio.shield(self.close())
+                    try:
+                        await asyncio.shield(self.close())
+                    except Exception:
+                        pass  # logged by shutdown; CancelledError remains the control signal
             raise
         except Exception as exc:
             raise map_error(exc) from exc
@@ -380,14 +408,11 @@ class CodexHarness:
                     if handle is not None:
                         try:
                             await asyncio.wait_for(handle.interrupt(), timeout=1.0)
-                        except Exception:
-                            pass  # owned server shutdown below is the bounded fallback
+                        except Exception as exc:
+                            self._cleanup_diagnostic("close interrupt", exc)
             finally:
                 try:
-                    try:
-                        await terminate_runtime(self._runtime_pid)
-                    finally:
-                        await self._codex.close()
+                    await self._shutdown_runtime()
                 finally:
                     if self._lock is not None:
                         self._lock.close()
