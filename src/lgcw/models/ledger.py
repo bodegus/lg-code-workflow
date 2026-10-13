@@ -114,6 +114,7 @@ class BuildMarker(Strict):
     session_id: str
     source: BuildSource
     publish_source: BuildSource | None = None
+    pending_feedback: Feedback | None = None
     phase: Literal["intent", "complete"]
     command_id: int | None
     handoff: BuildHandoff | None
@@ -181,7 +182,10 @@ class PublishMarker(Strict):
     build_id: str
     parent_sha: str
     head_sha: str | None
-    phase: Literal["intent", "committed", "complete"]
+    phase: Literal["intent", "committed", "complete", "reset_intent", "abandoned"]
+    reset_to: str | None = None
+    reset_command_id: int | None = None
+    reset_tree_fingerprint: str | None = None
     source: BuildSource
     round: int = Field(ge=0)
 
@@ -190,6 +194,11 @@ class PublishMarker(Strict):
         """A commit receipt always names its exact proposed head."""
         if (self.phase == "intent") != (self.head_sha is None):
             raise ValueError("publish phase disagrees with committed head")
+        reset = (self.reset_to, self.reset_command_id, self.reset_tree_fingerprint)
+        if any(value is not None for value in reset) and any(value is None for value in reset):
+            raise ValueError("restore receipt needs target, owner command and observed content")
+        if self.phase in {"reset_intent", "abandoned"} and self.reset_to is None:
+            raise ValueError("restore phase needs an exact authorized target")
         return self
 
 
@@ -253,6 +262,8 @@ class AskMarker(Strict):
     step: Step
     code: str
     supersedes: tuple[int, ...] = ()
+    protected_paths: tuple[str, ...] = ()
+    tree_fingerprint: str | None = None
 
 
 class AckMarker(Strict):
@@ -421,12 +432,20 @@ class PrLedger(Strict):
                 review_rounds += 1
             elif isinstance(marker, SessionMarker) and marker.reason == "fresh_restart":
                 fresh_restarts += 1
+        lost_sessions = {
+            entry.marker.operation_id
+            for entry in self.entries
+            if isinstance(entry.marker, BuildMarker)
+            and entry.marker.phase == "complete"
+            and entry.marker.error == "HarnessSessionLostError"
+        }
         gate_attempts = {
             entry.marker.operation_id
             for entry in self.entries
             if isinstance(entry.marker, BuildMarker)
             and entry.marker.phase == "intent"
             and entry.marker.source == "gate_fix"
+            and entry.marker.operation_id not in lost_sessions
         }
         return LedgerCounts(
             gate_fix_rounds=max(gate_fixes, len(gate_attempts)),

@@ -26,6 +26,8 @@ class PendingAsk(Strict):
     question: str
     return_to: Step
     code: str
+    protected_paths: tuple[str, ...] = ()
+    tree_fingerprint: str | None = None
 
 
 class RunState(Strict):

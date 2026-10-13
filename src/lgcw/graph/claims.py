@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 
+from lgcw.models.approval import ProtectedApproval
 from lgcw.models.base import Strict
 from lgcw.models.config import RepoConfig
 from lgcw.models.handoff import BuildHandoff
@@ -22,7 +24,13 @@ class ClaimsResult(Strict):
 
 
 def check_claims(
-    handoff: BuildHandoff, changed: Sequence[str], repo: RepoConfig, issue_body: str
+    handoff: BuildHandoff,
+    changed: Sequence[str],
+    repo: RepoConfig,
+    issue_body: str,
+    *,
+    tree_fingerprint: str | None = None,
+    approval: ProtectedApproval | None = None,
 ) -> ClaimsResult:
     """Check completion, actual changed paths and explicit protected-path scope."""
     if handoff.status != "done":
@@ -38,21 +46,35 @@ def check_claims(
                 return_to="build",
             ),
         )
+    tokens = set(re.findall(r"[A-Za-z0-9_.@/+\-]+", issue_body))
     protected = [
         path
         for path in changed
         if any(fnmatch.fnmatchcase(path, pattern) for pattern in repo.protected_globs)
-        and path not in issue_body
+        and path not in tokens
     ]
-    if protected:
+    protected = sorted(set(protected))
+    authorized = (
+        approval is not None
+        and tree_fingerprint is not None
+        and approval.paths == tuple(protected)
+        and approval.tree_fingerprint == tree_fingerprint
+    )
+    if protected and not authorized:
         return ClaimsResult(
             ok=False,
             feedback=None,
             ask=PendingAsk(
                 code="protected_path",
                 question="Changes touch protected paths not explicitly named in the issue: "
-                + ", ".join(protected),
+                + ", ".join(protected)
+                + "; proposed content fingerprint: "
+                + (tree_fingerprint or "unavailable")
+                + ". Only /lgcw answer approve approves this exact proposal; "
+                "other answers do not grant protected-path permission.",
                 return_to="build",
+                protected_paths=tuple(protected),
+                tree_fingerprint=tree_fingerprint,
             ),
         )
     claimed = {note.path for note in handoff.files}

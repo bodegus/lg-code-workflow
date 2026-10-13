@@ -26,12 +26,18 @@ class PrStatus(Strict):
     notes: tuple[str, ...]
 
 
-def render_pr_body(issue: IssueSnapshot, handoff: BuildHandoff | None, status: PrStatus) -> str:
+def render_pr_body(
+    issue: IssueSnapshot,
+    handoff: BuildHandoff | None,
+    status: PrStatus,
+    *,
+    max_chars: int = _BODY_LIMIT,
+) -> str:
     """Render a bounded PR body, preserving the handoff delimiters and status section."""
-    status_text = _trim(_render_status(status), _BODY_LIMIT // 3)
+    status_text = _trim(_render_status(status), max_chars // 3)
     template = Template(_PR_TEMPLATE)
     fixed = template.substitute(issue_number=issue.number, handoff="", status=status_text)
-    model_text = _trim(_render_handoff(handoff), _BODY_LIMIT - len(fixed))
+    model_text = _trim(_render_handoff(handoff), max_chars - len(fixed))
     return template.substitute(issue_number=issue.number, handoff=model_text, status=status_text)
 
 

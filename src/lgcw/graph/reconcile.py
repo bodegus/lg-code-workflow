@@ -97,7 +97,7 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
     if publication is not None and isinstance(publication.marker, PublishMarker):
         proposed = publication.marker
         if (
-            proposed.phase == "committed"
+            proposed.phase in {"intent", "committed", "reset_intent"}
             and pr.head_sha in {proposed.parent_sha, proposed.head_sha}
             and push.head_sha in {proposed.parent_sha, proposed.head_sha}
         ):

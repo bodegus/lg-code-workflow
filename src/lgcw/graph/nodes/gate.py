@@ -6,10 +6,15 @@ from typing import Any
 
 from langgraph.runtime import Runtime
 
-from lgcw.graph.claims import check_claims
 from lgcw.graph.context import RunContext
 from lgcw.graph.nodes.common import attention, finish_command, observe, post_once
-from lgcw.graph.nodes.work import current_parent, latest_build, latest_gate, load_work
+from lgcw.graph.nodes.work import (
+    check_work_claims,
+    current_parent,
+    latest_build,
+    latest_gate,
+    load_work,
+)
 from lgcw.ledger.markers import fingerprint
 from lgcw.models.ledger import GateMarker
 from lgcw.models.state import Feedback, RunState
@@ -58,18 +63,13 @@ async def gate(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
     if await ctx.workspace.head_sha() != parent:
         return attention("local_head_changed", "Committed local HEAD changed before gate.", "build")
     before_tree = await ctx.workspace.worktree_fingerprint(parent)
-    if previous is None and before_tree != build.tree_fingerprint:
+    if before_tree != build.tree_fingerprint:
         return attention(
             "workspace_changed",
             "Work content changed after the builder receipt; inspect and retry.",
             "build",
         )
-    claims = check_claims(
-        build.handoff,
-        await ctx.workspace.changed_paths(parent),
-        ctx.repo,
-        state.issue.body + "\n" + (state.owner_answer or ""),
-    )
+    claims = await check_work_claims(state, ctx, build.handoff, parent)
     if claims.ask is not None:
         return {"ask": claims.ask, "next_step": "ask"}
     if claims.feedback is not None:
@@ -95,12 +95,7 @@ async def gate(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
         return attention(
             "local_head_changed", "Gate changed committed HEAD; preserve and inspect.", "build"
         )
-    claims = check_claims(
-        build.handoff,
-        await ctx.workspace.changed_paths(parent),
-        ctx.repo,
-        state.issue.body + "\n" + (state.owner_answer or ""),
-    )
+    claims = await check_work_claims(state, ctx, build.handoff, parent)
     after_tree = await ctx.workspace.worktree_fingerprint(parent)
     feedback = (
         None

@@ -30,7 +30,11 @@ def build_ledger(
     entries.extend(_comment_entries(pr_comments, "pr", workflow_login))
     if pr_document is not None and pr_document.author == workflow_login:
         for marker in parse_markers(pr_document.body):
-            if isinstance(marker, RunMarker) and marker.branch == pr_document.head_ref:
+            if (
+                isinstance(marker, RunMarker)
+                and marker.branch == pr_document.head_ref
+                and not (marker.body_operation_id is not None and marker.snapshot is None)
+            ):
                 entries.append(
                     LedgerEntry(
                         comment_id=pr_document.number,

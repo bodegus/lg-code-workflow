@@ -27,6 +27,7 @@ class RecordingWorkspace(GitWorkspace):
         self.prepares: list[WorkspaceInfo] = []
         self.empty_commits: list[str] = []
         self.commits: list[str] = []
+        self.restores: list[tuple[str, str]] = []
         self.commit_edits: dict[str, str] = {}
         self.command_runs: list[tuple[str, ...]] = []
         self.crash_after: str | None = None
@@ -59,11 +60,28 @@ class RecordingWorkspace(GitWorkspace):
             self._done("commit_all")
         return result
 
-    async def push(self, branch: str, expected_remote_sha: str | None, auth: PushAuth) -> str:
-        result = await super().push(branch, expected_remote_sha, auth)
+    async def push(
+        self,
+        branch: str,
+        expected_remote_sha: str | None,
+        auth: PushAuth,
+        *,
+        head_sha: str | None = None,
+    ) -> str:
+        result = await super().push(branch, expected_remote_sha, auth, head_sha=head_sha)
         self.github.branch_heads[(self.repo, branch)] = result
         self.pushes.append(result)
         self._done("push")
+        return result
+
+    async def restore_owned_commit(
+        self, expected_head: str, target_head: str, operation: str, parent_sha: str
+    ) -> str:
+        result = await super().restore_owned_commit(
+            expected_head, target_head, operation, parent_sha
+        )
+        self.restores.append((expected_head, target_head))
+        self._done("restore_owned_commit")
         return result
 
     async def run_commands(

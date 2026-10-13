@@ -224,10 +224,12 @@ Step details:
 - **build.** See §5. A `blocked` or `partial` handoff with open questions → `ask`. An empty diff
   on `done` counts as a gate failure ("no changes").
 - **gate.** Protected paths (config `protected_globs`, default `.github/workflows/**`) changed
-  without the issue mentioning them → `ask`. Gate commands run on the host in the clone with a
+  without exact relative-path tokens in the frozen issue → `ask`. Owner free text does not
+  pre-authorize paths. The question carries exact paths and a content fingerprint; only its
+  authenticated `answer approve` acknowledges that proposal. Content changes re-ask (D-035 R1). Gate commands run on the host in the clone with a
   timeout; failure → feedback to `build` with the trimmed output (max `gate_fix_rounds`, default
-  2). The same failure fingerprint twice → fresh builder once (§6), then `ask`. Before the first
-  command, content must match the builder receipt. Commands must leave identical content;
+  2). The same failure fingerprint twice → fresh builder once (§6), then `ask`. Before every
+  command, including a retry after an unknown result, content must match the builder receipt. Commands must leave identical content;
   zero exit with altered content records blocking feedback. An unknown command result asks.
   Explicit owner retry authorizes a new command operation (D-035).
 - **publish.** `git add -A`, commit (message `lgcw: <first summary line> (#<n>)` plus trailers),
@@ -307,6 +309,29 @@ Step details:
   the reviewer packet. The reviewer gets approach, decisions, assumptions, risks, not-done, file
   reading order and acceptance evidence pointers, but not the builder's summary prose, self-grades
   or test claims (it gets the gate and CI results instead).
+
+### 6.1 Owner retry grants
+
+The PR question and acknowledged command bind each continuation; retry does not waive all limits.
+The exhaustive code table is `graph/retry.py`:
+
+| Ask code | Continuation |
+|---|---|
+| build_unknown, harness_auth, harness_quota, harness_error, node_error | Resume one explicitly authorized turn; preserve pending failure evidence. |
+| handoff_incomplete, protected_path | Resume with clarification; protected permission still requires the exact bound approve answer. |
+| gate_fix_limit, no_changes | One additional resumed fix; do not force a competing fresh-restart question. |
+| builder_restart_limit | One fresh builder for the acknowledged continuation; not a reusable global waiver. |
+| harness_session_lost | One fresh session seeded with the handoff and latest owner answer. |
+| workspace_changed | New build on preserved work; after commit, retry instead uses the journaled restoration below. |
+| build_evidence_missing | New build with verified input and new receipt. |
+| local_head_changed | Owner must inspect/preserve/restore the foreign local commit; never overwrite it automatically. |
+| handoff_too_large | Inspect retained local output, narrow or abort; never repeat a paid turn for that known result. |
+
+After a post-commit content question, retry freezes the observed content and restoration target
+in the PR. Candidate and dirty tracked work are preserved under local recovery refs. Restore a
+candidate matching the gate, or restore its published parent and rebuild a rejected candidate.
+Untracked files and foreign commits are refused. Unknown reset responses recover the exact clean
+target without resetting again. See D-035 R1.
 
 ## 7. Review levels and finding rules
 

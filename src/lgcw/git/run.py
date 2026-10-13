@@ -7,8 +7,9 @@ import base64
 import os
 import signal
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import BinaryIO
 
 from lgcw.models.base import Strict
 from lgcw.runlog import redact
@@ -49,6 +50,38 @@ def _secrets(env: Mapping[str, str]) -> tuple[str, ...]:
             if token:
                 secrets.append(token)
     return tuple(secrets)
+
+
+_CAPTURE_BYTES = 65536
+
+
+def _capture(stream: BinaryIO, safe: Callable[[bytes], str], overlap: int) -> str:
+    """Read a bounded snapshot and redact overlapping windows before clipping."""
+    descriptor = stream.fileno()
+    size = os.fstat(descriptor).st_size
+    if size <= _CAPTURE_BYTES:
+        encoded = safe(os.pread(descriptor, size, 0)).encode()
+        if len(encoded) <= _CAPTURE_BYTES:
+            return encoded.decode()
+        marker_bytes = b"\n[... capture truncated after redaction ...]\n"
+        head = (_CAPTURE_BYTES - len(marker_bytes)) // 2
+        tail = _CAPTURE_BYTES - len(marker_bytes) - head
+        return (
+            encoded[:head].decode(errors="ignore")
+            + marker_bytes.decode()
+            + encoded[-tail:].decode(errors="ignore")
+        )
+    marker = f"\n[... capture truncated; original stream {size} bytes ...]\n"
+    head = (_CAPTURE_BYTES - len(marker.encode())) // 2
+    tail = _CAPTURE_BYTES - len(marker.encode()) - head
+    # Positional reads do not move a still-live escaped writer's shared file offset.
+    # Overlap keeps a credential straddling either clip boundary whole for redaction.
+    prefix = safe(os.pread(descriptor, head + overlap, 0)).encode()[:head].decode(errors="ignore")
+    start = max(0, size - tail - overlap)
+    suffix = (
+        safe(os.pread(descriptor, size - start, start)).encode()[-tail:].decode(errors="ignore")
+    )
+    return prefix + marker + suffix
 
 
 async def run_process(
@@ -114,13 +147,16 @@ async def run_process(
         finally:
             # A successful gate must not leave descendants racing subsequent git checks.
             kill()
-        stdout.seek(0)
-        stderr.seek(0)
         return GitResult(
             argv=argv,
             code=124 if timed_out else process.returncode if process.returncode is not None else 1,
-            out=safe(stdout.read()),
-            err=safe(stderr.read()) + ("\nprocess timed out" if timed_out else ""),
+            out=_capture(
+                stdout, safe, max((len(secret.encode()) for secret in secrets), default=0) + 1024
+            ),
+            err=_capture(
+                stderr, safe, max((len(secret.encode()) for secret in secrets), default=0) + 1024
+            )
+            + ("\nprocess timed out" if timed_out else ""),
         )
 
 

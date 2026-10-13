@@ -6,10 +6,18 @@ from typing import Any
 
 from langgraph.runtime import Runtime
 
-from lgcw.graph.claims import check_claims, should_restart_builder
+from lgcw.graph.claims import should_restart_builder
 from lgcw.graph.context import RunContext
+from lgcw.graph.handoff_size import fit_handoff
 from lgcw.graph.nodes.common import attention, finish_command, observe, post_once, sanitized
-from lgcw.graph.nodes.work import current_parent, latest_build, latest_gate, load_work
+from lgcw.graph.nodes.work import (
+    check_work_claims,
+    current_parent,
+    latest_build,
+    latest_gate,
+    load_work,
+)
+from lgcw.graph.retry import RETRY_POLICIES, retry_question
 from lgcw.harness.errors import (
     HarnessAuthError,
     HarnessError,
@@ -17,7 +25,7 @@ from lgcw.harness.errors import (
     HarnessSessionLostError,
 )
 from lgcw.harness.prompts import render_build_turn, render_fix_turn, render_restart_turn
-from lgcw.ledger.markers import fingerprint
+from lgcw.ledger.markers import fingerprint, render_marker
 from lgcw.models.handoff import BuildHandoff
 from lgcw.models.harness import SessionRef, SessionSpec
 from lgcw.models.ledger import BuildMarker, BuildSource, FeedbackMarker, GateMarker, SessionMarker
@@ -31,6 +39,20 @@ def _error_code(error: str) -> str:
         "HarnessQuotaError": "harness_quota",
         "HarnessSessionLostError": "harness_session_lost",
     }.get(error, "harness_error")
+
+
+def _error_question(error: HarnessError) -> str:
+    """Render the same specific repair guidance for startup and turn failures."""
+    message = "Builder failed: " + str(error)
+    if isinstance(error, HarnessAuthError):
+        message += "; re-login with the dedicated workflow CODEX_HOME, then retry."
+    if isinstance(error, HarnessQuotaError):
+        message += (
+            "; quota resets at " + error.resets_at.isoformat()
+            if error.resets_at is not None
+            else "; reset time unavailable; check the dedicated login's usage."
+        )
+    return message
 
 
 async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
@@ -51,6 +73,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         )
     previous = latest_build(state, parent)
     command_id = state.owner_command.comment_id if state.owner_command else None
+    retry_code = retry_question(state)
+    retry_policy = RETRY_POLICIES.get(retry_code or "", "inspect")
     feedback = state.feedback
     handoff = state.handoff
     findings: tuple[GatedFinding, ...] = ()
@@ -74,6 +98,15 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
     if completed:
         handoff = completed[-1].handoff
     if previous is not None:
+        if previous.error == "HandoffTooLarge":
+            return attention(
+                "handoff_too_large",
+                "The retained agent output cannot fit the PR record "
+                "without losing paths/identities. "
+                "Inspect the local turn artifact; abort and open a narrower issue; "
+                "no second paid turn was dispatched.",
+                "build",
+            )
         authorized_new = command_id is not None and command_id != previous.command_id
         if previous.phase == "intent" and not authorized_new:
             return attention(
@@ -120,7 +153,7 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             preserved = (
                 prior_gate.feedback
                 if prior_gate and prior_gate.phase == "complete"
-                else (previous.feedback)
+                else (previous.pending_feedback or previous.feedback)
             )
             feedback = (
                 preserved
@@ -155,10 +188,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             publish_source = origin
     counts = state.ledger.counts()
     grants = counts.retry_grants.get("build", {})
-    if (
-        source == "gate_fix"
-        and counts.gate_fix_rounds
-        >= ctx.config.limits.gate_fix_rounds + grants.get("gate_fix_limit", 0)
+    if source == "gate_fix" and counts.gate_fix_rounds >= ctx.config.limits.gate_fix_rounds + (
+        grants.get("gate_fix_limit", 0) + grants.get("no_changes", 0)
     ):
         return attention(
             "gate_fix_limit", "The bounded gate/no-change fix allowance is exhausted.", "build"
@@ -184,6 +215,10 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
     ]
     usage = completed[-1].usage if completed else None
     cause = should_restart_builder(usage, failures, {}, ctx.config.limits.context_restart_ratio)
+    # A gate-limit retry grants one resumed fix, not a second unrelated restart ask.
+    # Session-loss retry has its own explicit fresh-session allowance.
+    if retry_policy in {"resume", "fix"} or retry_code == "harness_session_lost":
+        cause = None
     unused_restart = (
         current is not None
         and current.cause == cause
@@ -195,7 +230,14 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
     if (
         cause is not None
         and not unused_restart
-        and causes.get(cause, 0) >= 1 + grants.get("builder_restart_limit", 0)
+        and causes.get(cause, 0) >= 1
+        and not (
+            retry_code == "builder_restart_limit"
+            and not any(
+                isinstance(entry.marker, BuildMarker) and entry.marker.command_id == command_id
+                for entry in state.ledger.entries
+            )
+        )
     ):
         return attention(
             "builder_restart_limit",
@@ -203,18 +245,36 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             "build",
         )
     fresh_reason = cause if cause is not None and not unused_restart else None
+    if retry_code == "harness_session_lost":
+        if causes.get("session_lost", 0) >= 1 + grants.get("harness_session_lost", 0):
+            return attention(
+                "harness_session_lost",
+                "The granted fresh session was already used; inspect and retry for one more.",
+                "build",
+            )
+        fresh_reason = "session_lost"
     for session_attempt in range(2):
         if current is None or fresh_reason is not None:
-            ref = await ctx.harness.start_session(
-                SessionSpec(
-                    role="builder",
-                    cwd=info.repo_dir,
-                    sandbox="workspace_write",
-                    network=True,
-                    effort=ctx.config.builder_effort,
-                    model=ctx.config.model,
+            try:
+                ref = await ctx.harness.start_session(
+                    SessionSpec(
+                        role="builder",
+                        cwd=info.repo_dir,
+                        sandbox="workspace_write",
+                        network=True,
+                        effort=ctx.config.builder_effort,
+                        model=ctx.config.model,
+                    )
                 )
-            )
+            except HarnessError as exc:
+                ctx.log.event(
+                    "builder_session_error",
+                    node="build",
+                    error_class=type(exc).__name__,
+                    error=str(exc),
+                )
+                await finish_command(ctx, state, number)
+                return attention(_error_code(type(exc).__name__), _error_question(exc), "build")
             current = SessionMarker(
                 role="builder",
                 session_id=ref.session_id,
@@ -223,6 +283,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             )
             await post_once(ctx, number, current, "Builder session selected.")
             sessions.append(current)
+            if fresh_reason is not None:
+                causes[fresh_reason] = causes.get(fresh_reason, 0) + 1
         ref = SessionRef(session_id=current.session_id, role="builder")
         obs = await observe(ctx, state.pr)
         seq = (
@@ -242,6 +304,7 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             session_id=ref.session_id,
             source=source,
             publish_source=publish_source,
+            pending_feedback=feedback,
             phase="intent",
             command_id=command_id,
             handoff=None,
@@ -257,7 +320,12 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         await post_once(ctx, number, intent, "Builder dispatch intent.")
         if fresh_reason is not None or (session_attempt and fresh_reason == "session_lost"):
             turn = render_restart_turn(
-                state.issue, state.intake.acceptance_criteria, handoff, findings, feedback
+                state.issue,
+                state.intake.acceptance_criteria,
+                handoff,
+                findings,
+                feedback,
+                state.owner_answer,
             )
         elif feedback is not None:
             turn = render_fix_turn(
@@ -281,21 +349,12 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             if (
                 isinstance(exc, HarnessSessionLostError)
                 and session_attempt == 0
-                and causes.get("session_lost", 0) == 0
+                and causes.get("session_lost", 0) < 1 + grants.get("harness_session_lost", 0)
             ):
                 fresh_reason = "session_lost"
                 continue
-            message = "Builder failed: " + str(exc)
-            if isinstance(exc, HarnessAuthError):
-                message += "; re-login with the dedicated workflow CODEX_HOME, then retry."
-            if isinstance(exc, HarnessQuotaError):
-                message += (
-                    "; quota resets at " + exc.resets_at.isoformat()
-                    if exc.resets_at is not None
-                    else "; reset time unavailable; check the dedicated login's usage."
-                )
             await finish_command(ctx, state, number)
-            return attention(_error_code(error_name), message, "build")
+            return attention(_error_code(error_name), _error_question(exc), "build")
         ctx.log.turn(ctx.log.next_turn_seq(), "builder", turn, outcome, None)
         if await ctx.workspace.head_sha() != parent:
             return attention(
@@ -303,13 +362,25 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 "Builder changed committed HEAD; preserve and inspect.",
                 "build",
             )
-        result = sanitized(outcome.output)
-        claims = check_claims(
-            result,
-            await ctx.workspace.changed_paths(parent),
-            ctx.repo,
-            state.issue.body + "\n" + (state.owner_answer or ""),
-        )
+        result = fit_handoff(sanitized(outcome.output))
+        if result is None:
+            await post_once(
+                ctx,
+                number,
+                intent.model_copy(update={"phase": "complete", "error": "HandoffTooLarge"}),
+                "Agent output retained locally; cannot fit the durable handoff "
+                "without losing machine identities.",
+            )
+            await finish_command(ctx, state, number)
+            return attention(
+                "handoff_too_large",
+                "The retained agent output cannot fit the PR record "
+                "without losing paths/identities. "
+                "Inspect the local turn artifact; abort and open a narrower issue; "
+                "no second paid turn was dispatched.",
+                "build",
+            )
+        claims = await check_work_claims(state, ctx, result, parent)
         record = intent.model_copy(
             update={
                 "phase": "complete",
@@ -319,6 +390,20 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 "tree_fingerprint": await ctx.workspace.worktree_fingerprint(parent),
             }
         )
+        if len(render_marker(record)) > 59000:
+            await post_once(
+                ctx,
+                number,
+                intent.model_copy(update={"phase": "complete", "error": "HandoffTooLarge"}),
+                "Agent output retained locally; durable record exceeds its service bound.",
+            )
+            await finish_command(ctx, state, number)
+            return attention(
+                "handoff_too_large",
+                "Inspect the retained local agent output; abort and open a narrower issue; "
+                "no second paid turn was dispatched.",
+                "build",
+            )
         await post_once(ctx, number, record, "Builder handoff retained; claims checked in code.")
         await finish_command(ctx, state, number)
         obs = await observe(ctx, state.pr)

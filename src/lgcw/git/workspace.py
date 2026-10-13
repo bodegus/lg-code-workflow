@@ -384,7 +384,14 @@ class GitWorkspace(WorkspacePort):
             raise ValueError("empty checkpoint requires clean workspace")
         return await self._commit(message, empty=True)
 
-    async def push(self, branch: str, expected_remote_sha: str | None, auth: PushAuth) -> str:
+    async def push(
+        self,
+        branch: str,
+        expected_remote_sha: str | None,
+        auth: PushAuth,
+        *,
+        head_sha: str | None = None,
+    ) -> str:
         """Publish only the owned branch with the exact full-ref lease and no lost ancestry."""
         info = self._prepared()
         cwd = info.repo_dir
@@ -415,7 +422,12 @@ class GitWorkspace(WorkspacePort):
         remote_sha = observed.split()[0] if observed else None
         if remote_sha != expected_remote_sha:
             raise PushRejectedError("remote head differs from exact expected lease")
-        head = await self._checked(cwd, "rev-parse", "HEAD")
+        head = (
+            _sha(head_sha)
+            if head_sha is not None
+            else await self._checked(cwd, "rev-parse", "HEAD")
+        )
+        await self._checked(cwd, "cat-file", "-e", head + "^{commit}")
         if expected_remote_sha is not None:
             ancestor = await git(
                 "merge-base", "--is-ancestor", _sha(expected_remote_sha), head, cwd=cwd
@@ -427,7 +439,7 @@ class GitWorkspace(WorkspacePort):
                 "push",
                 f"--force-with-lease={ref}:{expected_remote_sha or ''}",
                 expected_url,
-                f"HEAD:{ref}",
+                f"{head}:{ref}",
                 cwd=cwd,
                 env=env,
             )
@@ -447,6 +459,56 @@ class GitWorkspace(WorkspacePort):
             "--",
         )
         return output.encode()[: max(0, max_bytes)].decode(errors="ignore")
+
+    async def _optional_ref(self, cwd: Path, ref: str) -> str | None:
+        result = await git("rev-parse", "--verify", ref, cwd=cwd)
+        if result.code == 0:
+            return result.out.strip()
+        if result.code in {1, 128}:
+            return None
+        raise ValueError("cannot inspect recovery ref")
+
+    async def restore_owned_commit(
+        self, expected_head: str, target_head: str, operation: str, parent_sha: str
+    ) -> str:
+        """Restore a journaled publication after explicit owner retry, preserving recovery refs."""
+        cwd = self._prepared().repo_dir
+        expected_head, target_head, parent_sha = (
+            _sha(expected_head),
+            _sha(target_head),
+            _sha(parent_sha),
+        )
+        if target_head not in {expected_head, parent_sha} or not re.fullmatch(
+            r"[a-f0-9]{16,64}", operation
+        ):
+            raise ValueError("restore target is outside the journaled publication")
+        head = await self.head_sha()
+        if head not in {expected_head, target_head}:
+            raise ValueError("restore refuses a foreign local commit")
+        message = await self.commit_message(expected_head)
+        if (
+            f"LGCW-Operation: {operation}" not in message.splitlines()
+            or f"LGCW-Parent: {parent_sha}" not in message.splitlines()
+            or await self._checked(cwd, "rev-parse", expected_head + "^") != parent_sha
+        ):
+            raise ValueError("restore candidate has no exact owned publication proof")
+        if await self._checked(cwd, "ls-files", "--others", "--exclude-standard", "-z"):
+            raise ValueError(
+                "restore refuses untracked files; owner must preserve/remove them first"
+            )
+        ref = "refs/lgcw/recovery/" + operation
+        existing = await self._optional_ref(cwd, ref)
+        if existing not in {None, expected_head}:
+            raise ValueError("restore recovery ref already belongs to another commit")
+        if existing is None:
+            await self._checked(cwd, "update-ref", ref, expected_head)
+        work_ref = ref + "-work-/" + await self.worktree_fingerprint(parent_sha)
+        if await self._optional_ref(cwd, work_ref) is None:
+            snapshot = await self._checked(cwd, "stash", "create")
+            if snapshot:
+                await self._checked(cwd, "update-ref", work_ref, _sha(snapshot))
+        await self._checked(cwd, "reset", "--hard", target_head)
+        return await self.head_sha()
 
     async def adopt_remote_head(self, branch: str) -> str:
         """Adopt a remotely changed owned branch only when the local clone is clean."""

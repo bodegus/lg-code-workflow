@@ -773,6 +773,9 @@ our own code. Research references point into [research/](research/).
   actual content fingerprint. An intent without completion asks `build_unknown`; only a new
   authenticated owner retry authorizes another paid operation. A session selected but never
   materialized may get one fresh `session_lost` session; a busy turn is not a lost session.
+- **Startup failures:** dedicated-login/quota failures during session creation use the same
+  repair guidance as turn failures, with no build intent, paid turn or push. Session creation
+  errors are logged after the harness redaction boundary; a new graph regression failed first.
 - **Limits:** unpublished gate-fix attempts count distinct build intents in the PR ledger;
   publication does not count the same attempt twice. Repeated normalized gate failures and
   measured context occupancy select one fresh session per cause, then ask. Owner retry grants
@@ -807,3 +810,61 @@ our own code. Research references point into [research/](research/).
   loss, unknown paid/gate results with explicit retry, session-loss/context/failure caps,
   provenance and same-path byte races. See the PR's actual command output. Unit checkpoints stop
   at `ci_wait`; T15/T16 and a real end-to-end run remain unqualified by T14.
+
+
+### D-035 R1 protected approval and bounded recovery (review 6156345540)
+
+- **Protected paths (F1):** original issue pre-authorization requires exact relative-path tokens;
+  `docs/AGENTS.md.bak` cannot approve `AGENTS.md`. Owner prose is never added to that token set.
+  A protected-path question records its sorted exact paths and the current content fingerprint
+  (including parent). Only its authenticated `/lgcw answer approve` acknowledgement grants that
+  exact proposal. Changed content/path sets re-ask. Denial plus a non-compliant builder reproduced
+  an unauthorized push before the fix; now it re-asks without a new push.
+- **Gate retries (F2):** every gate entry checks bytes against the builder completion, including
+  explicit retry after an unknown command result. A hand edit after a command crash requires a
+  new build; the old handoff cannot authorize it.
+- **Service bounds (F3):** fit the PR body before publication effects, reserving room for its
+  compact receipt. That body RunMarker contains ids/hashes and no issue snapshot/criteria/answer;
+  the canonical run remains in authenticated conversation facts. Thin view receipts are not a
+  replacement for that canonical run. Oversized explanatory agent prose is visibly clipped while
+  retaining every machine identity and list item; full raw output remains in the local turn
+  artifact. If identities cannot fit, write a known HandoffTooLarge error receipt and ask for
+  inspection/narrowing/abort. Even explicit retry never pays for that known result again. Check
+  actual escaped marker size before posting the completion. Tests cover 28 KB issue + 36 KB
+  handoff, 59.2 KB handoff and an unfit identity list.
+- **Host output (F4):** capture at most 64 KiB per stream in the controller, retaining head/tail
+  and a truncation marker. Fixed-length positional reads use the file-size snapshot; no shared
+  writer offset is changed. Redact overlapping windows before clipping (overlap includes known
+  credential lengths), and also cap redaction expansion. Temporary on-disk output is not capped;
+  the command lifetime remains bounded. A 32 MiB stdout + 32 MiB stderr regression fails without
+  the cap; credential-at-clip and redaction-expansion regressions pass.
+- **Owner context (F5):** restart prompts carry the latest acknowledged owner answer in fenced
+  JSON, even when a bootstrap-era answer exists. No restart silently loses later clarification.
+- **Pending fixes (F6):** BuildMarker.pending_feedback survives an errored or unknown fix turn;
+  retry restates the exact gate failure until a fix completes. It is distinct from newly measured
+  claims feedback.
+- **Retry grants (F7/F8):** the code table in graph/retry.py and design §6.1 defines every
+  build-directed question. A gate/no-change limit retry grants one resumed fix without forcing a
+  competing restart question. A restart-limit retry grants one fresh builder for that continuation;
+  an unknown result's retry resumes rather than silently spending another fresh-session grant.
+  Session-loss retry grants one fresh builder seeded with the handoff; auto-recovery plus explicit
+  grants remain PR-derived. Known unusable session-loss attempts do not consume gate-fix rounds
+  (F11). Auth/quota session-creation failures use the same repair guidance as turn failures.
+- **Post-commit recovery (F9):** an explicit retry freezes the observed content and target in a
+  reset_intent receipt. Preserve the exact candidate under refs/lgcw/recovery/<operation> and
+  dirty tracked content under the sibling <operation>-work-/<content-hash> namespace. Restore
+  a gate-matching candidate, or restore its published parent and abandon the rejected candidate
+  for a new build. Refuse foreign local commits and untracked files. Backup refs are append-only;
+  repeated observation of an already-restored clean target does not reset again. Tests cover
+  lost commit/reset responses, both recovery choices, recoverable dirty bytes and foreign-commit
+  refusal. The owner question states the restoration action before retry authorizes it.
+- **Push identity/tests (F10/F12):** publication passes its audited immutable SHA into push; the
+  git refspec uses that SHA rather than HEAD. External executable-boundary races prove an owner
+  update between pre-check and git push is rejected, and a moving local HEAD cannot change the
+  published candidate. Replacing the exact lease with --force now fails the race regression.
+  The auth test makes edits before failure and asserts re-login guidance; the repeated-gate test
+  asserts the precise gate_fix_limit code, not either of two possible limits.
+- **Evidence:** actual failure reproductions, focused integration, full make check and killed
+  source-copy mutants are recorded in docs/validation/2026-10-13-t14-r1.md and the PR. No new
+  dependency or paid/live call is needed for these corrections; standard-library bounded I/O
+  and D-025's existing git adapter cover the added operations.

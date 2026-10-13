@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from lgcw.git.port import WorkspaceInfo
+from lgcw.graph.claims import ClaimsResult, check_claims
 from lgcw.graph.context import RunContext
 from lgcw.graph.nodes.common import observe
-from lgcw.models.ledger import BuildMarker, GateMarker, PublishMarker
+from lgcw.models.approval import ProtectedApproval
+from lgcw.models.handoff import BuildHandoff
+from lgcw.models.ledger import AckMarker, AskMarker, BuildMarker, GateMarker, PublishMarker
 from lgcw.models.state import RunState
 
 
@@ -66,3 +69,42 @@ async def current_parent(state: RunState, ctx: RunContext) -> str | None:
         return None
     remote = await ctx.github.branch_head(ctx.issue_ref.repo, state.pr.head_ref)
     return push.head_sha if state.pr.head_sha == remote == push.head_sha else None
+
+
+async def check_work_claims(
+    state: RunState, ctx: RunContext, handoff: BuildHandoff, parent: str
+) -> ClaimsResult:
+    """Check actual paths and content against the issue or a question-bound owner approval."""
+    if state.issue is None:
+        raise ValueError("claims require frozen issue")
+    approvals: list[ProtectedApproval] = []
+    questions = {
+        entry.marker.seq: entry.marker
+        for entry in state.ledger.entries
+        if isinstance(entry.marker, AskMarker)
+    }
+    for entry in state.ledger.entries:
+        ack = entry.marker
+        if not isinstance(ack, AckMarker) or ack.verb != "answer" or ack.command_snapshot is None:
+            continue
+        question = questions.get(ack.seq)
+        if (
+            question is not None
+            and question.code == "protected_path"
+            and question.protected_paths
+            and question.tree_fingerprint is not None
+            and ack.command_snapshot.text.strip() == "approve"
+        ):
+            approvals.append(
+                ProtectedApproval(
+                    paths=question.protected_paths, tree_fingerprint=question.tree_fingerprint
+                )
+            )
+    return check_claims(
+        handoff,
+        await ctx.workspace.changed_paths(parent),
+        ctx.repo,
+        state.issue.body,
+        tree_fingerprint=await ctx.workspace.worktree_fingerprint(parent),
+        approval=approvals[-1] if approvals else None,
+    )

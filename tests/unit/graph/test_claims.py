@@ -75,3 +75,15 @@ def test_repeat_failure_restart_once() -> None:
     assert should_restart_builder(None, ["one", "one"], {"failure:one": 1}, 0.6) is None
     assert should_restart_builder(None, ["one", "two"], {}, 0.6) is None
     assert should_restart_builder(None, [], {}, 0.6) is None
+
+
+@pytest.mark.unit
+def test_issue_path_substring_never_approves_protected_file() -> None:
+    value = handoff().model_copy(update={"files": [FileNote(path="AGENTS.md", why="fixture")]})
+    result = check_claims(
+        value,
+        ["AGENTS.md"],
+        repo().model_copy(update={"protected_globs": ("AGENTS.md",)}),
+        "Update docs/AGENTS.md.bak only",
+    )
+    assert result.ask is not None and result.ask.code == "protected_path"
