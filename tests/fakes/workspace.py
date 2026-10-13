@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from lgcw.git.port import CommandResult, PushAuth
+from lgcw.git.port import CommandResult, PushAuth, WorkspaceInfo
 from lgcw.git.workspace import GitWorkspace
+from lgcw.models.config import RepoConfig
+from lgcw.models.issue import IssueRef
 from tests.fakes.github import FakeGitHub
 
 
@@ -22,6 +24,7 @@ class RecordingWorkspace(GitWorkspace):
         self.github = github
         self.repo = repo
         self.pushes: list[str] = []
+        self.prepares: list[WorkspaceInfo] = []
         self.empty_commits: list[str] = []
         self.command_runs: list[tuple[str, ...]] = []
         self.crash_after: str | None = None
@@ -30,6 +33,12 @@ class RecordingWorkspace(GitWorkspace):
         if self.crash_after == name:
             self.crash_after = None
             raise InjectedCrash(name)
+
+    async def prepare(self, repo: RepoConfig, issue: IssueRef, branch: str) -> WorkspaceInfo:
+        """Record actual preparations for pre-clone guard assertions."""
+        result = await super().prepare(repo, issue, branch)
+        self.prepares.append(result)
+        return result
 
     async def commit_empty(self, message: str) -> str:
         result = await super().commit_empty(message)

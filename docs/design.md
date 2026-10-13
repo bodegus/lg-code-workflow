@@ -135,7 +135,9 @@ bodies. Submitted review facts use their own namespace and require matching auth
 2. `blocked` marker → end. A pending `ask` with no later command → end (`waiting`); with a command →
    apply it (write `ack` with frozen command, return step and any exact-head adoption) and continue
    at its step, or `blocked` on abort. An unfinished acknowledgement resumes after a crash;
-   `command_done` prevents replay. A newer pending question takes precedence.
+   `command_done` prevents replay. A newer pending question takes precedence. A continuation
+   targeting reconcile completes its command before selecting the next step from fresh facts;
+   it never returns directly to the same unfinished acknowledgement.
 3. `ready` for the current head → end (`merge_ready`).
 4. PR head ≠ the last `push` head → `ask` ("head moved"); `/lgcw retry` adopts the new head with a
    `push` marker of source `human`.
@@ -154,13 +156,19 @@ bootstrap operation/base and setup intent/result. The initial commit contains it
 and `[skip ci]`; re-entry verifies its message and empty diff before reuse. A run intent containing
 its exact initial SHA precedes push. Remote head equality recovers a lost push response; draft
 creation includes its run marker atomically. Its issue completion fact links the PR number so a
-closed PR remains discoverable. Identical run body/comment copies count as one fact.
+closed PR remains discoverable. Any-state head-branch lookup also finds a closed/merged PR
+before that completion receipt exists, so crash/closure never creates another PR. Identical run
+body/comment copies count as one fact.
 
 A setup intent without a measured result asks instead of re-executing. Owner continuation uses a
 new setup operation ID. Dirty setup output is preserved and asks. Owner retry adopts only the
 head frozen in its acknowledgement: fetch/adopt the clean clone, write a human push marker, then
 complete the command before observing CI. Labels repair from observed state after lost responses.
-New/superseding questions do not replay older acknowledged continuations. See D-031.
+New/superseding questions do not replay older acknowledged continuations. Non-abort PR commands
+restore active labels before continuing. A newly generated, lost unpublished checkout gets a new
+bootstrap/setup operation and initial commit only while the remote remains absent; changes to an
+existing checkout still ask. Setup tails stay local; receipt markers carry only code/fingerprint.
+See D-031 and D-033.
 
 ### 3.5 Why this is enough to survive crashes
 

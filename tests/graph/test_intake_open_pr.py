@@ -308,6 +308,8 @@ async def test_human_head_adoption_is_exact_and_durable(
         if isinstance(item, PushMarker) and item.source == "human"
     ]
     assert len(adopted) == 1 and adopted[0].head_sha == owner_head
+    labels = (await case.github.get_pr(repo, number)).labels
+    assert "lgcw:active" in labels and "lgcw:waiting" not in labels
     assert await case.workspace.head_sha() == owner_head
     assert await checked(case.origin.bare, "rev-parse", branch) == owner_head
     assert len(case.workspace.pushes) == 1

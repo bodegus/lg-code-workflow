@@ -61,10 +61,10 @@ async def test_github_contract(tmp_path: Path) -> None:
     sdk: GitHub[TokenAuthStrategy] = GitHub(
         provider.token(), auto_retry=False, http_cache=False, timeout=30.0
     )
-    owner, name = "bodegus", "oc2-publish-sandbox"
+    owner, name = "bodegus", "family-calendar"
     repo = f"{owner}/{name}"
     nonce = uuid4().hex
-    branch = f"lgcw/contract-{nonce}"
+    branch = f"lgcw-contract-{nonce}"
     fixture_path = f"lgcw-contract-{nonce}.txt"
     receipt_path = Path(os.environ.get("LGCW_LIVE_RECEIPT", str(tmp_path / "receipt.json")))
     receipt = ContractReceipt(
@@ -153,8 +153,13 @@ async def test_github_contract(tmp_path: Path) -> None:
                 path=fixture_path,
                 line=1,
             )
+            assert await client.branch_head(repo, branch) == commit.sha
             await scenario_issue_comments_round_trip(client, target)
             pr = await scenario_draft_pr_then_ready(client, target)
+            document = await client.get_pr_document(repo, pr.number)
+            assert document.head_sha == commit.sha and document.head_ref == branch
+            assert document.author == await client.viewer_login()
+            assert document.body == "Contract only; no merge.\n-builder"
             receipt = receipt.model_copy(update={"pr_url": pr.url})
             _save(receipt_path, receipt)
             await scenario_review_thread_reply_and_resolve(client, target, pr)
@@ -223,3 +228,9 @@ async def test_github_contract(tmp_path: Path) -> None:
                     await sdk.rest.git.async_delete_ref(owner, name, f"heads/{branch}")
                     receipt = receipt.model_copy(update={"branch_deleted": True})
                     _save(receipt_path, receipt)
+
+            if receipt.closed_prs:
+                closed_pr = await client.find_pr(repo, branch)
+                assert closed_pr is not None and closed_pr.number in receipt.closed_prs
+                assert closed_pr.state == "CLOSED"
+                assert await client.find_open_pr(repo, branch) is None

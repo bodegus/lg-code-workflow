@@ -592,3 +592,36 @@ our own code. Research references point into [research/](research/).
 - **Login:** the reviewer reports the dedicated workflow Codex login is ready. Never read or
   print its authentication file, or reuse the desktop login. T5/T10/T17 live results require actual
   receipts before any box is ticked; this decision alone does not qualify them.
+
+## D-033 T13 review: bounded continuations, closed runs and lost unpublished clones
+
+- **Decided:** 2026-10-13, PR #2 review 6151329960. A command returning to reconcile completes
+  its acknowledgement before routing from a refreshed ledger. It never routes directly back to
+  reconcile from the same unfinished acknowledgement. Non-abort PR commands repair active/waiting
+  labels. No-PR head changes return to open_pr for a bounded recheck after owner correction;
+  abort remains available on the resulting question.
+- **Closed identity:** add GitHubPort.find_pr, an any-state head-branch lookup via githubkit's
+  existing typed paginator. Reconcile and open_pr inspect closed/merged PRs even before the linked
+  completion receipt exists. No new library; the existing SDK remains viable (D-008).
+- **Lost unpublished clone:** WorkspaceInfo.created distinguishes a code-generated new clone from
+  an existing checkout. With a recorded checkpoint and an absent remote, a newly generated clone
+  gets a new bootstrap operation/base and setup journal before re-checkpointing. The original
+  issue snapshot remains frozen; an unpublished replacement may start at current default. A
+  changed existing local head still asks. A second remote read plus exact lease guards publication.
+  Fresh code-generated clones reset the prior path's config snapshot, then validate the same strict
+  allowlist; existing clone config drift remains refused. Published-clone recovery reuses the
+  remote commit and never pushes a second checkpoint.
+- **Independent guards:** setup cleanliness compares the worktree with HEAD; committed checkpoint
+  content is independently checked against the base, expected message and recorded head. Tests
+  isolate those conditions rather than passing through a different earlier guard.
+- **Input/evidence:** HTML comments (including incomplete placeholders) and indented code do not
+  supply acceptance criteria. PR-body run facts and dedupe remain, with admission/exclusion tests.
+  Setup output stays in its local measured log; new SetupMarker receipts retain code/fingerprint
+  and tail=null (the nullable legacy field remains readable).
+- **Proof:** compiled-graph regressions exercise reconcile retry/answer and ack loss, failed adoption
+  followed by retry/abort, no-PR head change, close-before-completion, clone loss with setup/main
+  advancement, ownership guards and redaction. Fourteen isolated source-removal probes each fail a
+  behavioral assertion, proving guard/body/dedupe coverage without changing production source.
+- **Live follow-up:** the reviewer explicitly allowed the persistent T5 fixture/plan follow-up in
+  this PR. It now uses the owner-approved family-calendar target and recognizable branch prefix;
+  its named command also checks branch/body reads and any-state discovery after fixture closure.

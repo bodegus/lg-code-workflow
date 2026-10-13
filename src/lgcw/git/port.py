@@ -38,6 +38,7 @@ class WorkspaceInfo(Strict):
     branch: str
     base_sha: str
     resumed: bool
+    created: bool = False
 
 
 class CommandResult(Strict):

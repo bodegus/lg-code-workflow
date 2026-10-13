@@ -267,6 +267,25 @@ class GitHubClient(GitHubPort):
             created_at=raw["created_at"],
         )
 
+    async def find_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
+        """Find any-state branch identity so a closed run cannot be recreated."""
+        owner, name = repo.split("/", 1)
+        sdk = self._sdk()
+        items: AsyncIterator[SdkPullRequestSimple] = sdk.rest.paginate(
+            sdk.rest.pulls.async_list,
+            owner=owner,
+            repo=name,
+            state="all",
+            head=f"{owner}:{head_branch}",
+            sort="created",
+            direction="desc",
+            per_page=100,
+        )
+        async for pr in items:
+            if pr.head.ref == head_branch:
+                return await self.get_pr(repo, pr.number)
+        return None
+
     async def find_open_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
         """Find an existing open PR before the caller attempts creation."""
         owner, name = repo.split("/", 1)

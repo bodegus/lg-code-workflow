@@ -135,6 +135,16 @@ class FakeGitHub(GitHubPort):
         self._finish("create_issue_comment")
         return comment
 
+    async def find_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
+        """Find the newest matching branch even after owner closure or merge."""
+        self._record("find_pr", repo=repo, head_branch=head_branch)
+        keys = [
+            key for key, pr in self.prs.items() if key[0] == repo and pr.head_ref == head_branch
+        ]
+        found = self._current_pr(max(keys, key=lambda key: key[1])) if keys else None
+        self._finish("find_pr")
+        return found
+
     async def find_open_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
         """Find only open PRs in the requested repository and branch."""
         self._record("find_open_pr", repo=repo, head_branch=head_branch)

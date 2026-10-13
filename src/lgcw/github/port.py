@@ -49,6 +49,10 @@ class GitHubPort(Protocol):
         """Publish a conversation comment, including its own workflow marker."""
         ...
 
+    async def find_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
+        """Find the latest head-branch PR in any state, including owner-closed runs."""
+        ...
+
     async def find_open_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
         """Find an open PR for a branch."""
         ...

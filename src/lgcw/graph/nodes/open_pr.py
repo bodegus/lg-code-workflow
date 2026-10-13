@@ -20,7 +20,9 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
     if state.issue is None or state.intake is None or state.intake.status != "ok":
         return attention("intake_missing", "Accepted issue criteria are missing.", "intake")
     branch = f"lgcw/issue-{ctx.issue_ref.number}"
-    pr = await ctx.github.find_open_pr(ctx.issue_ref.repo, branch)
+    pr = await ctx.github.find_pr(ctx.issue_ref.repo, branch)
+    if pr is not None and pr.state != "OPEN":
+        return {"pr": pr, "next_step": "end", "outcome": "closed"}
     obs = await observe(ctx, pr)
     previous = obs.ledger.latest("bootstrap")
     journal = previous.marker if previous and isinstance(previous.marker, BootstrapMarker) else None
@@ -30,8 +32,12 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             "This branch has a PR but no bootstrap journal; inspect ownership.",
             "open_pr",
         )
+    run_entry = obs.ledger.latest("run")
+    old_run = run_entry.marker if run_entry and isinstance(run_entry.marker, RunMarker) else None
     info = await ctx.workspace.prepare(ctx.repo, ctx.issue_ref, branch)
-    base = journal.base_sha if journal else info.base_sha
+    remote_before = await ctx.github.branch_head(ctx.issue_ref.repo, branch)
+    replacing = bool(info.created and old_run and old_run.initial_sha and remote_before is None)
+    base = info.base_sha if replacing else journal.base_sha if journal else info.base_sha
     operation = (
         journal.operation_id
         if journal
@@ -39,6 +45,8 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             ctx.issue_ref.repo, str(ctx.issue_ref.number), base, state.issue.updated_at.isoformat()
         )
     )
+    if replacing and old_run and old_run.initial_sha:
+        operation = fingerprint(operation, "recheckpoint", old_run.initial_sha, base)
     intent = BootstrapMarker(
         operation_id=operation, branch=branch, base_sha=base, phase="intent", head_sha=None
     )
@@ -78,7 +86,7 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
                     operation_id=setup_id,
                     phase="complete",
                     code=measured.code,
-                    tail=measured.tail,
+                    tail=None,
                     fingerprint=measured.fingerprint,
                 )
             )
@@ -89,7 +97,8 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
                 "Setup failed; inspect its measured output and retry when corrected.",
                 "open_pr",
             )
-    if await ctx.workspace.changed_paths(base):
+    head = await ctx.workspace.head_sha()
+    if await ctx.workspace.changed_paths(head):
         return attention(
             "setup_dirty",
             "Bootstrap workspace has changes. Preserve and inspect them before retrying.",
@@ -98,14 +107,15 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
     message = (
         f"lgcw: initialize issue #{ctx.issue_ref.number} [skip ci]\n\nLGCW-Operation: {operation}"
     )
-    head = await ctx.workspace.head_sha()
-    run_entry = obs.ledger.latest("run")
-    old_run = run_entry.marker if run_entry and isinstance(run_entry.marker, RunMarker) else None
     if head == base:
-        if old_run and old_run.initial_sha is not None:
+        if (
+            old_run
+            and old_run.initial_sha is not None
+            and (old_run.operation_id == operation or remote_before is not None)
+        ):
             return attention(
                 "local_head_changed",
-                "Recorded checkpoint is absent from the local branch. Inspect it before retrying.",
+                "Recorded checkpoint is missing from an existing local branch.",
                 "open_pr",
             )
         head = await ctx.workspace.commit_empty(message)
@@ -117,7 +127,12 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             "Local bootstrap head is not the recorded empty checkpoint.",
             "open_pr",
         )
-    if old_run and old_run.initial_sha is not None and old_run.initial_sha != head:
+    if (
+        old_run
+        and old_run.initial_sha is not None
+        and old_run.initial_sha != head
+        and (old_run.operation_id == operation or remote_before is not None)
+    ):
         return attention(
             "local_head_changed", "Local checkpoint differs from its recorded identity.", "open_pr"
         )
@@ -153,8 +168,8 @@ async def open_pr(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
     elif remote != head:
         return attention(
             "head_moved",
-            "Remote branch differs from the initial checkpoint. Inspect it before adoption.",
-            "reconcile",
+            "Remote head changed. Inspect and restore the checkpoint before retrying.",
+            "open_pr" if pr is None else "reconcile",
         )
     pr = pr or await ctx.github.create_draft_pr(
         ctx.issue_ref.repo, branch, ctx.repo.default_branch, state.issue.title, body

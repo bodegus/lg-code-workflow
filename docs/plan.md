@@ -261,14 +261,14 @@ def test_counts_derived_from_markers():
 - Consumes: `GitHubPort` (T4), models (T1).
 - Produces: `require_live(component: str, allow_live: bool) -> None` raising `LiveAdapterDisabledError` unless `allow_live` or `LGCW_LIVE=1`; `GhCliTokenProvider(TokenProvider)` (`gh auth token`, cached 50 minutes, never logged); `GitHubClient(token_provider: TokenProvider, *, allow_live: bool = False)` implementing every `GitHubPort` method with githubkit (REST; GraphQL for `get_pr`, `mark_ready`, `list_review_threads`, `resolve_thread`); pure mapping functions `pr_from_graphql(data: dict[str, Any]) -> PrSnapshot`, `job_from_rest(job: dict[str, Any], annotations: list[dict[str, Any]]) -> JobView`, `thread_from_graphql(node: dict[str, Any]) -> ReviewThread`.
 
-- [x] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against `bodegus/oc2-publish-sandbox` (`@pytest.mark.live`).
+- [x] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against owner-approved `bodegus/family-calendar` (D-032) (`@pytest.mark.live`).
 - [x] **Step 2: Run** → FAIL.
 - [x] **Step 3: Implement.** Mutating calls wait at least 1 s between each other (GitHub best practice); node retry policies (T12) handle transient errors, so the client does not retry 4xx.
-- [ ] **Step 4: Run** `make check` → PASS; then `LGCW_LIVE=1 uv run pytest tests/live/test_github_contract.py -m live` → PASS (the builder runs it; output pasted in the PR).
+- [x] **Step 4: Run** `make check` → PASS; then `LGCW_LIVE=1 uv run pytest tests/live/test_github_contract.py -m live` → PASS (the builder runs it; output pasted in the PR).
 - [x] **Step 5: Commit** `feat(github): githubkit client behind GitHubPort`.
 
 
-T5 live status (D-022): local `make check` passed; the first live contract failed at fixture issue creation (HTTP 410, Issues disabled). Temporary branch cleanup is verified. The live checkbox stays open pending the owner's fixture choice; do not call the adapter live-qualified yet.
+T5 live qualification (D-032/D-033): the original D-022 fixture attempt failed with HTTP 410 and was cleaned up. The owner-approved family-calendar target now passes the exact named live command: 1 passed in 32.76s. Fixture issue #24 and PR #25 are closed, branch deleted, and main unchanged; any-state lookup finds the closed PR after deletion. Local make check: 538 unit tests, strict mypy, 97.66% coverage. This qualifies the named adapter contract, not a complete workflow or Codex harness.
 
 ### Task T6: CI policy — classifier, decision table, log trimming (pure)
 
@@ -580,3 +580,10 @@ from ask to verified `open_pr` recovery; the concrete writer/recovery proof rema
 The former multi-marker parsing test encoded behavior contrary to design §3.1; its assertion
 now rejects the entire ambiguous comment while still proving prose-preserving stripping.
 No gate, coverage threshold, timeout, or assertion was relaxed to hide a failure.
+
+
+T13 R1 corrections: reconcile-target commands finish before fresh routing; any-state PR lookup
+prevents recreation after closure; a lost unpublished clone can re-checkpoint/setup on the current
+default while the remote is absent; resumed PR labels repair; HTML comments/indented code are not
+criteria. New ownership/redaction/body-source tests are backed by fourteen independent guard-removal
+failures. Setup tails stay local. D-033 and the review-mutations spike retain the evidence.

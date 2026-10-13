@@ -26,7 +26,7 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
     """Acknowledge authorized commands before routing and recover interrupted continuations."""
     ctx = runtime.context
     branch = f"lgcw/issue-{ctx.issue_ref.number}"
-    pr = await ctx.github.find_open_pr(ctx.issue_ref.repo, branch)
+    pr = await ctx.github.find_pr(ctx.issue_ref.repo, branch)
     obs = await observe(ctx, pr)
     if pr is None:
         linked = obs.ledger.latest("bootstrap")
@@ -116,6 +116,8 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
         fields.update(owner_command=command)
         if command.verb == "answer":
             fields["owner_answer"] = command.text
+        if command.verb != "abort" and pr is not None:
+            await labels(ctx, pr.number, ("lgcw:active",), ("lgcw:waiting",))
         if ack.adopt is not None:
             if pr is None or pr.head_sha != ack.adopt.head_sha:
                 return fields | attention(
@@ -135,7 +137,16 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
             continuation = RunState.model_validate(state.model_dump() | fields)
             await finish_command(ctx, continuation, number)
             fields["owner_command"] = None
-        return fields | {"next_step": ack.step}
+        if ack.step != "reconcile":
+            return fields | {"next_step": ack.step}
+        continuation = RunState.model_validate(state.model_dump() | fields)
+        await finish_command(ctx, continuation, number)
+        fields["owner_command"] = None
+        obs = await observe(ctx, pr)
+        fields.update(ledger=obs.ledger, threads=obs.threads)
+        outcome = next_step(
+            ReconcileView(issue=current, pr=pr, ledger=obs.ledger, threads=obs.threads, commands=())
+        )
     if outcome.reason == "waiting":
         await labels(ctx, number, ("lgcw:waiting",), ("lgcw:active", "lgcw:merge-ready"))
         return fields | {"next_step": "end", "outcome": "waiting"}

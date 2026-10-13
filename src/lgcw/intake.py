@@ -14,7 +14,10 @@ def extract_acceptance_criteria(body: str) -> tuple[str, ...]:
     """Return a named nonempty section's items, or unchecked checklist items as fallback."""
     visible: list[str] = []
     fence: tuple[str, int] | None = None
+    body = re.sub(r"<!--[\s\S]*?(?:-->|$)", "", body)
     for line in body.splitlines():
+        if line.startswith(("    ", "\t")):
+            continue
         match = re.match(r"^\s{0,3}(`{3,}|~{3,})(.*)$", line)
         if match:
             chars, rest = match.groups()

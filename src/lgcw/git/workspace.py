@@ -200,11 +200,16 @@ class GitWorkspace(WorkspacePort):
             start = f"refs/remotes/origin/{branch if resumed else repo.default_branch}"
             await self._checked(checkout, "checkout", "-b", branch, start)
             await self._checked(checkout, "remote", "set-url", "origin", url)
+            # A freshly generated clone has a new config identity (e.g. tracking main vs issue).
+            # Existing clone configs still must match their original preparation snapshot.
+            self._configs.pop(checkout, None)
         await self._trusted_config(checkout, url, repo, branch)
         base = await self._checked(checkout, "merge-base", _sha(base), "HEAD")
         await self._safe_links(checkout)
         self._repo, self._issue = repo, issue
-        self._info = WorkspaceInfo(repo_dir=checkout, branch=branch, base_sha=base, resumed=resumed)
+        self._info = WorkspaceInfo(
+            repo_dir=checkout, branch=branch, base_sha=base, resumed=resumed, created=not existing
+        )
         return self._info
 
     async def run_commands(
