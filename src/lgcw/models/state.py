@@ -13,7 +13,7 @@ from lgcw.models.github import PrSnapshot, ReviewThread
 from lgcw.models.handoff import BuildHandoff
 from lgcw.models.harness import SessionRef
 from lgcw.models.issue import IntakeResult, IssueRef, IssueSnapshot
-from lgcw.models.ledger import PrLedger
+from lgcw.models.ledger import Command, PrLedger
 from lgcw.models.review import GateResult, LevelDecision
 
 type RunOutcome = Literal["merge_ready", "waiting", "blocked", "closed", "error"]
@@ -58,5 +58,6 @@ class RunState(Strict):
     last_reviewed_sha: str | None = None
     ask: PendingAsk | None = None
     owner_answer: str | None = None
+    owner_command: Command | None = None
     next_step: Step = "reconcile"
     outcome: RunOutcome | None = None

@@ -261,14 +261,14 @@ def test_counts_derived_from_markers():
 - Consumes: `GitHubPort` (T4), models (T1).
 - Produces: `require_live(component: str, allow_live: bool) -> None` raising `LiveAdapterDisabledError` unless `allow_live` or `LGCW_LIVE=1`; `GhCliTokenProvider(TokenProvider)` (`gh auth token`, cached 50 minutes, never logged); `GitHubClient(token_provider: TokenProvider, *, allow_live: bool = False)` implementing every `GitHubPort` method with githubkit (REST; GraphQL for `get_pr`, `mark_ready`, `list_review_threads`, `resolve_thread`); pure mapping functions `pr_from_graphql(data: dict[str, Any]) -> PrSnapshot`, `job_from_rest(job: dict[str, Any], annotations: list[dict[str, Any]]) -> JobView`, `thread_from_graphql(node: dict[str, Any]) -> ReviewThread`.
 
-- [x] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against `bodegus/oc2-publish-sandbox` (`@pytest.mark.live`).
+- [x] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against owner-approved `bodegus/family-calendar` (D-032) (`@pytest.mark.live`).
 - [x] **Step 2: Run** → FAIL.
 - [x] **Step 3: Implement.** Mutating calls wait at least 1 s between each other (GitHub best practice); node retry policies (T12) handle transient errors, so the client does not retry 4xx.
-- [ ] **Step 4: Run** `make check` → PASS; then `LGCW_LIVE=1 uv run pytest tests/live/test_github_contract.py -m live` → PASS (the builder runs it; output pasted in the PR).
+- [x] **Step 4: Run** `make check` → PASS; then `LGCW_LIVE=1 uv run pytest tests/live/test_github_contract.py -m live` → PASS (the builder runs it; output pasted in the PR).
 - [x] **Step 5: Commit** `feat(github): githubkit client behind GitHubPort`.
 
 
-T5 live status (D-022): local `make check` passed; the first live contract failed at fixture issue creation (HTTP 410, Issues disabled). Temporary branch cleanup is verified. The live checkbox stays open pending the owner's fixture choice; do not call the adapter live-qualified yet.
+T5 live qualification (D-032/D-033): the original D-022 fixture attempt failed with HTTP 410 and was cleaned up. The owner-approved family-calendar target now passes the exact named live command: 1 passed in 32.76s. Fixture issue #24 and PR #25 are closed, branch deleted, and main unchanged; any-state lookup finds the closed PR after deletion. Local make check: 538 unit tests, strict mypy, 97.66% coverage. This qualifies the named adapter contract, not a complete workflow or Codex harness.
 
 ### Task T6: CI policy — classifier, decision table, log trimming (pure)
 
@@ -456,12 +456,23 @@ T12 proof: missing graph modules caused three collection errors first; the no-in
 **Interfaces:**
 - Consumes: T12 graph, fakes.
 - Produces: node functions registered in `DEFAULT_NODES`; `reconcile` node applies an owner command by writing an `ack` marker before routing.
+- Recovery extensions (D-031): typed `IntakeMarker`, `BootstrapMarker` (including linked PR number), `SetupMarker`, `CommandDoneMarker`; optional frozen intake/checkpoint fields on `RunMarker` and command/step/adoption fields on `AckMarker`; `LedgerEntry.where` additionally accepts `pr_body` for atomic initial identity. `GitHubPort.branch_head/get_pr_document`, `PrDocument`, and `WorkspacePort.commit_message` supply plain-code verification reads. `RunContext.tokens` is excluded/non-repr and used only by `push_auth`. Identical run body/comment copies are one fact; setup results and command continuations never replay blindly.
 
-- [ ] **Step 1: Write the failing tests**: criteria table (`## Acceptance criteria` list, `### Done when`, checklist only, none → empty); graph tests `test_incomplete_issue_asks_on_issue` (one `ask` comment on the issue, label `lgcw:waiting`, outcome `waiting`), `test_rerun_while_waiting_posts_nothing`, `test_owner_answer_resumes_to_open_pr` (one `ack`, then a draft PR), `test_open_pr_once_across_crash` (`fail_after("create_draft_pr", 0)` then rerun → exactly one PR, one push of the empty commit, its message contains `[skip ci]`), `test_foreign_author_issue_blocked`, `test_abort_blocks`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the nodes; every side effect checks the ledger or the remote first.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(graph): intake, open_pr, ask and blocked`.
+- [x] **Step 1: Write the failing tests**: criteria table (`## Acceptance criteria` list, `### Done when`, checklist only, none → empty); graph tests `test_incomplete_issue_asks_on_issue` (one `ask` comment on the issue, label `lgcw:waiting`, outcome `waiting`), `test_rerun_while_waiting_posts_nothing`, `test_owner_answer_resumes_to_open_pr` (one `ack`, then a draft PR), `test_open_pr_once_across_crash` (`fail_after("create_draft_pr", 1)` then rerun → exactly one PR, one push of the empty commit, its message contains `[skip ci]`), `test_foreign_author_issue_blocked`, `test_abort_blocks`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** the nodes; every side effect checks the ledger or the remote first.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(graph): intake, open_pr, ask and blocked`.
+
+T13 proof: criteria/module failures first, then 11/20 compiled-graph cases failed before the real
+registry/nodes existed. Additional unchanged regressions failed for marker-safe posted receipts,
+answered-intake re-entry, exact human-head adoption and duplicate grants for one question.
+The original bootstrap case checks commit/push/draft/label response losses; every comment boundary
+and every owner-answer boundary also recover to one initial commit, push and PR. Setup unknown
+results ask without replay; closed PRs remain linked; human adoption retains owner history across
+ack/push-marker/completion losses. Unit-only continuation stops at a build checkpoint; this is not
+a full workflow execution. Live prerequisites are now available (D-032), but no live call ran for
+this task. The default graph still refuses missing T14–T16 nodes.
 
 ### Task T14: Nodes — build, gate, publish (with the fresh-builder rule)
 
@@ -569,3 +580,10 @@ from ask to verified `open_pr` recovery; the concrete writer/recovery proof rema
 The former multi-marker parsing test encoded behavior contrary to design §3.1; its assertion
 now rejects the entire ambiguous comment while still proving prose-preserving stripping.
 No gate, coverage threshold, timeout, or assertion was relaxed to hide a failure.
+
+
+T13 R1 corrections: reconcile-target commands finish before fresh routing; any-state PR lookup
+prevents recreation after closure; a lost unpublished clone can re-checkpoint/setup on the current
+default while the remote is absent; resumed PR labels repair; HTML comments/indented code are not
+criteria. New ownership/redaction/body-source tests are backed by fourteen independent guard-removal
+failures. Setup tails stay local. D-033 and the review-mutations spike retain the evidence.

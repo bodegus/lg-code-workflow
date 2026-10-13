@@ -38,6 +38,7 @@ class WorkspaceInfo(Strict):
     branch: str
     base_sha: str
     resumed: bool
+    created: bool = False
 
 
 class CommandResult(Strict):
@@ -66,6 +67,10 @@ class WorkspacePort(Protocol):
 
     async def head_sha(self) -> str:
         """Read the local committed head for publish recovery without making another commit."""
+        ...
+
+    async def commit_message(self, sha: str) -> str:
+        """Read an operation trailer for commit-before-receipt recovery."""
         ...
 
     async def run_commands(

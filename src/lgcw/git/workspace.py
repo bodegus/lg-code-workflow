@@ -200,11 +200,16 @@ class GitWorkspace(WorkspacePort):
             start = f"refs/remotes/origin/{branch if resumed else repo.default_branch}"
             await self._checked(checkout, "checkout", "-b", branch, start)
             await self._checked(checkout, "remote", "set-url", "origin", url)
+            # A freshly generated clone has a new config identity (e.g. tracking main vs issue).
+            # Existing clone configs still must match their original preparation snapshot.
+            self._configs.pop(checkout, None)
         await self._trusted_config(checkout, url, repo, branch)
         base = await self._checked(checkout, "merge-base", _sha(base), "HEAD")
         await self._safe_links(checkout)
         self._repo, self._issue = repo, issue
-        self._info = WorkspaceInfo(repo_dir=checkout, branch=branch, base_sha=base, resumed=resumed)
+        self._info = WorkspaceInfo(
+            repo_dir=checkout, branch=branch, base_sha=base, resumed=resumed, created=not existing
+        )
         return self._info
 
     async def run_commands(
@@ -241,6 +246,12 @@ class GitWorkspace(WorkspacePort):
     async def head_sha(self) -> str:
         """Return the clone's committed head, including a commit made before a crash."""
         return await self._checked(self._prepared().repo_dir, "rev-parse", "HEAD")
+
+    async def commit_message(self, sha: str) -> str:
+        """Read a committed message without hooks or external programs."""
+        return await self._checked(
+            self._prepared().repo_dir, "show", "-s", "--format=%B", _sha(sha)
+        )
 
     async def numstat(self, base_sha: str) -> str:
         """Return committed/index/worktree changes plus untracked file counts without staging."""

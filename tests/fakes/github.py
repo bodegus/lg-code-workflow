@@ -10,6 +10,7 @@ from lgcw.github.port import GitHubPort, ResolveReason
 from lgcw.models.github import (
     IssueComment,
     JobView,
+    PrDocument,
     PrReview,
     PrSnapshot,
     ReviewCommentDraft,
@@ -32,6 +33,7 @@ class FakeGitHub(GitHubPort):
         self.prs: dict[tuple[str, int], PrSnapshot] = {}
         self.pr_bodies: dict[tuple[str, int], str] = {}
         self.pr_titles: dict[tuple[str, int], str] = {}
+        self.pr_documents: dict[tuple[str, int], PrDocument] = {}
         self.branch_heads: dict[tuple[str, str], str] = {}
         self.threads: dict[tuple[str, int], list[ReviewThread]] = {}
         self.reviews: dict[tuple[str, int], list[PrReview]] = {}
@@ -43,14 +45,14 @@ class FakeGitHub(GitHubPort):
         self.rerun_requests: dict[tuple[str, int], int] = {}
         self.calls: list[tuple[str, dict[str, object]]] = []
         self._call_counts: dict[str, int] = {}
-        self._failures: dict[str, tuple[int, Exception]] = {}
+        self._failures: dict[str, tuple[int, BaseException]] = {}
         self._timelines: dict[str, list[tuple[float, list[RunView], list[JobView]]]] = {}
         self._timeline_starts: dict[str, datetime] = {}
         self._next_pr = 100
         self._next_comment = 1
         self._next_review = 1
 
-    def fail_after(self, method: str, n: int, exc: Exception) -> None:
+    def fail_after(self, method: str, n: int, exc: BaseException) -> None:
         """Fail once after the nth subsequent completed call, after applying its effect."""
         if n < 1:
             raise ValueError("failure call number must be positive")
@@ -133,6 +135,16 @@ class FakeGitHub(GitHubPort):
         self._finish("create_issue_comment")
         return comment
 
+    async def find_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
+        """Find the newest matching branch even after owner closure or merge."""
+        self._record("find_pr", repo=repo, head_branch=head_branch)
+        keys = [
+            key for key, pr in self.prs.items() if key[0] == repo and pr.head_ref == head_branch
+        ]
+        found = self._current_pr(max(keys, key=lambda key: key[1])) if keys else None
+        self._finish("find_pr")
+        return found
+
     async def find_open_pr(self, repo: str, head_branch: str) -> PrSnapshot | None:
         """Find only open PRs in the requested repository and branch."""
         self._record("find_open_pr", repo=repo, head_branch=head_branch)
@@ -152,6 +164,25 @@ class FakeGitHub(GitHubPort):
         self._record("get_pr", repo=repo, number=number)
         result = self._current_pr((repo, number))
         self._finish("get_pr")
+        return result
+
+    async def branch_head(self, repo: str, branch: str) -> str | None:
+        """Read the in-memory remote without changing it."""
+        self._record("branch_head", repo=repo, branch=branch)
+        result = self.branch_heads.get((repo, branch))
+        self._finish("branch_head")
+        return result
+
+    async def get_pr_document(self, repo: str, number: int) -> PrDocument:
+        """Read authenticated body metadata separately from conversation comments."""
+        self._record("get_pr_document", repo=repo, number=number)
+        key = (repo, number)
+        pr = self._current_pr(key)
+        original = self.pr_documents[key]
+        result = original.model_copy(
+            update={"body": self.pr_bodies[key], "head_ref": pr.head_ref, "head_sha": pr.head_sha}
+        )
+        self._finish("get_pr_document")
         return result
 
     async def create_draft_pr(
@@ -181,6 +212,14 @@ class FakeGitHub(GitHubPort):
         self.prs[key] = pr
         self.pr_bodies[key] = body
         self.pr_titles[key] = title
+        self.pr_documents[key] = PrDocument(
+            number=number,
+            author=self.login,
+            body=body,
+            created_at=self.clock.now(),
+            head_ref=head,
+            head_sha=head_sha,
+        )
         self._finish("create_draft_pr")
         return pr
 

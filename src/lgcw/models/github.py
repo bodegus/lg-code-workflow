@@ -33,6 +33,17 @@ class IssueComment(Strict):
     created_at: datetime
 
 
+class PrDocument(Strict):
+    """Authenticated PR body and branch identity for atomic creation recovery."""
+
+    number: int
+    author: str
+    body: str
+    created_at: datetime
+    head_ref: str
+    head_sha: str
+
+
 class ThreadComment(Strict):
     """A comment in a review thread."""
 

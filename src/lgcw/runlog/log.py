@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -14,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field, JsonValue
 
 from lgcw.clock import Clock, SystemClock
+from lgcw.ledger.markers import parse_markers, render_marker
 from lgcw.models.base import Strict
 from lgcw.models.harness import Role, TurnInput, TurnOutcome, Usage
 from lgcw.runlog.redact import redact
@@ -86,6 +88,11 @@ def _json(model: BaseModel) -> str:
         separators=(",", ":"),
         allow_nan=False,
     )
+
+
+def redact_data(value: JsonValue) -> JsonValue:
+    """Redact nested values before a structured record is serialized to any artifact."""
+    return _clean(value)
 
 
 class RunLog:
@@ -185,13 +192,26 @@ class RunLog:
         if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", kind):
             raise ValueError("invalid posted artifact kind")
         folder = self.run_dir / "github"
+        values: dict[str, JsonValue] = dict(ids)
+        metadata = json.dumps(_clean(values), ensure_ascii=False, indent=2, sort_keys=True).replace(
+            "`", r"\u0060"
+        )
+        records = parse_markers(body)
+        if records:
+            record = records[0]
+            clean_record = type(record).model_validate(_clean(record.model_dump(mode="json")))
+            prefix = body[: body.rfind("<!-- lgcw:v1 ")]
+            clean_body = redact(prefix) + render_marker(clean_record)
+        else:
+            clean_body = redact(body)
+        content = f"```json\n{metadata}\n```\n\n{clean_body}"
+        identity = hashlib.sha256(content.encode()).hexdigest()[:16]
+        for path in folder.glob(f"*-{kind}-{identity}.md"):
+            return self._atomic(path, content)
         existing = [
             int(match.group(1))
             for path in folder.glob("*.md")
             if (match := re.match(r"(\d+)-", path.name))
         ]
         sequence = max(existing, default=0) + 1
-        values: dict[str, JsonValue] = dict(ids)
-        metadata = json.dumps(_clean(values), ensure_ascii=False, indent=2).replace("`", r"\u0060")
-        content = f"```json\n{metadata}\n```\n\n{redact(body)}"
-        return self._atomic(self._target(f"github/{sequence:04d}-{kind}.md"), content)
+        return self._atomic(self._target(f"github/{sequence:04d}-{kind}-{identity}.md"), content)

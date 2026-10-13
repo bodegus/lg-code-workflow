@@ -235,3 +235,23 @@ def test_retry_grants_are_joined_to_prior_questions_and_deduplicated() -> None:
     ).counts()
     assert counts.retry_grants == {"build": {"gate_limit": 1}, "review": {"review_limit": 1}}
     assert counts.gate_fix_rounds == counts.reruns_total == 0
+
+
+@pytest.mark.unit
+def test_acknowledged_superseding_question_does_not_revive_older_question() -> None:
+    first = AskMarker(seq=1, step="intake", code="missing")
+    later = AskMarker(seq=2, step="open_pr", code="setup", supersedes=(1,))
+    assert (
+        _ledger(first, later, AckMarker(seq=2, command_id=9, verb="answer")).pending_ask() is None
+    )
+    assert _ledger(first, AckMarker(seq=2, command_id=9, verb="answer")).pending_ask() is not None
+
+
+@pytest.mark.unit
+def test_one_question_cannot_grant_twice_with_distinct_command_ids() -> None:
+    counts = _ledger(
+        AskMarker(seq=1, step="build", code="gate_limit"),
+        AckMarker(seq=1, command_id=10, verb="retry"),
+        AckMarker(seq=1, command_id=11, verb="retry"),
+    ).counts()
+    assert counts.retry_grants == {"build": {"gate_limit": 1}}

@@ -3,14 +3,63 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from lgcw.models.base import Step, Strict
 from lgcw.models.ci import CiAction, CiClass, CiStatus
 from lgcw.models.harness import Role
+from lgcw.models.issue import IssueSnapshot
 from lgcw.models.review import Lens, ReviewLevel
+
+
+class Command(Strict):
+    """An authorized owner command without a workflow marker."""
+
+    verb: Literal["answer", "retry", "abort"]
+    text: str
+    comment_id: int
+    author: str
+
+
+class IntakeMarker(Strict):
+    """Original issue snapshot and accepted criteria before any clone or agent dispatch."""
+
+    kind: Literal["intake"] = "intake"
+    snapshot: IssueSnapshot
+    criteria: tuple[str, ...]
+    command_id: int | None
+
+
+class BootstrapMarker(Strict):
+    """Initial branch operation journal, completed after observed PR effects."""
+
+    kind: Literal["bootstrap"] = "bootstrap"
+    operation_id: str
+    branch: str
+    base_sha: str
+    phase: Literal["intent", "complete"]
+    head_sha: str | None
+    pr_number: int | None = None
+
+
+class SetupMarker(Strict):
+    """Setup intent or measured result; an unknown result never authorizes replay."""
+
+    kind: Literal["setup"] = "setup"
+    operation_id: str
+    phase: Literal["intent", "complete"]
+    code: int | None
+    tail: str | None
+    fingerprint: str | None
+
+
+class CommandDoneMarker(Strict):
+    """An acknowledged command's continuation completed its durable step."""
+
+    kind: Literal["command_done"] = "command_done"
+    command_id: int
 
 
 class RunMarker(Strict):
@@ -21,6 +70,11 @@ class RunMarker(Strict):
     branch: str
     base_sha: str
     flow_version: Literal[1] = 1
+    snapshot: IssueSnapshot | None = None
+    criteria: tuple[str, ...] = ()
+    initial_sha: str | None = None
+    operation_id: str | None = None
+    owner_answer: str | None = None
 
 
 class SessionMarker(Strict):
@@ -82,6 +136,7 @@ class AskMarker(Strict):
     seq: int = Field(ge=1)
     step: Step
     code: str
+    supersedes: tuple[int, ...] = ()
 
 
 class AckMarker(Strict):
@@ -91,6 +146,19 @@ class AckMarker(Strict):
     seq: int = Field(ge=1)
     command_id: int
     verb: Literal["answer", "retry", "abort"]
+    step: Step | None = None
+    command_snapshot: Command | None = None
+    adopt: PushMarker | None = None
+
+    @model_validator(mode="after")
+    def consistent_command(self) -> Self:
+        """Reject a snapshot differing from the acknowledged command identity."""
+        if self.command_snapshot is not None and (
+            self.command_snapshot.comment_id != self.command_id
+            or self.command_snapshot.verb != self.verb
+        ):
+            raise ValueError("acknowledgement command snapshot mismatch")
+        return self
 
 
 class ReadyMarker(Strict):
@@ -117,7 +185,11 @@ type Marker = Annotated[
     | AskMarker
     | AckMarker
     | ReadyMarker
-    | BlockedMarker,
+    | BlockedMarker
+    | IntakeMarker
+    | BootstrapMarker
+    | SetupMarker
+    | CommandDoneMarker,
     Field(discriminator="kind"),
 ]
 
@@ -127,7 +199,7 @@ class LedgerEntry(Strict):
 
     comment_id: int
     created_at: datetime
-    where: Literal["issue", "pr", "thread", "review"]
+    where: Literal["issue", "pr", "thread", "review", "pr_body"]
     marker: Marker
 
 
@@ -165,7 +237,10 @@ class PrLedger(Strict):
             if isinstance(marker, AckMarker):
                 acknowledged.add(marker.seq)
             elif isinstance(marker, AskMarker) and marker.seq not in acknowledged:
+                acknowledged.update(marker.supersedes)
                 return entry
+            elif isinstance(marker, AskMarker):
+                acknowledged.update(marker.supersedes)
         return None
 
     def last_push(self) -> PushMarker | None:
@@ -198,6 +273,7 @@ class PrLedger(Strict):
         reruns_by_head: dict[str, int] = {}
         questions: dict[int, AskMarker] = {}
         granted_commands: set[int] = set()
+        granted_questions: set[int] = set()
         grants: dict[Step, dict[str, int]] = {}
         for entry in self.entries:
             marker = entry.marker
@@ -207,12 +283,14 @@ class PrLedger(Strict):
                 isinstance(marker, AckMarker)
                 and marker.verb == "retry"
                 and marker.command_id not in granted_commands
+                and marker.seq not in granted_questions
                 and marker.seq in questions
             ):
                 question = questions[marker.seq]
                 codes = grants.setdefault(question.step, {})
                 codes[question.code] = codes.get(question.code, 0) + 1
                 granted_commands.add(marker.command_id)
+                granted_questions.add(marker.seq)
             elif isinstance(marker, PushMarker):
                 gate_fixes += marker.source == "gate_fix"
                 ci_fixes += marker.source == "ci_fix"
@@ -233,12 +311,3 @@ class PrLedger(Strict):
             fresh_restarts=fresh_restarts,
             retry_grants=grants,
         )
-
-
-class Command(Strict):
-    """An authorized owner command without a workflow marker."""
-
-    verb: Literal["answer", "retry", "abort"]
-    text: str
-    comment_id: int
-    author: str
