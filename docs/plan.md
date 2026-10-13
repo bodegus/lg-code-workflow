@@ -80,7 +80,7 @@ background in [research/README.md](research/README.md).
 - Create: `tests/__init__.py`, `tests/conftest.py`, `tests/unit/test_package.py`, `tests/unit/test_lanes.py`
 
 **Interfaces:**
-- Produces: `lgcw.__version__: str`; markers `unit`, `live`; autouse fixture `isolated_env` (sets `LGCW_HOME` to `tmp_path/"lgcw"`, removes `GH_TOKEN`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `CODEX_HOME`, sets `LANGSMITH_TRACING=false`); `pytest_collection_modifyitems` rejects a test without exactly one lane; `live` tests skipped unless `LGCW_LIVE=1`.
+- Produces: `lgcw.__version__: str`; markers `unit`, `live`; autouse fixture `isolated_env` (sets `LGCW_HOME` to `tmp_path/"lgcw"`, removes `GH_TOKEN`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `CODEX_HOME`, removes `LGCW_LIVE` for `unit` items while preserving opt-in for `live` items, sets `LANGSMITH_TRACING=false`); `pytest_collection_modifyitems` rejects a test without exactly one lane; `live` tests skipped unless `LGCW_LIVE=1`.
 
 - [x] **Step 1: Write the failing tests**
 

@@ -10,9 +10,14 @@ import pytest
 CONFTEST = Path(__file__).parents[1] / "conftest.py"
 
 
+def _configure_project(pytester: pytest.Pytester) -> None:
+    pytester.makeconftest(CONFTEST.read_text())
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function\n")
+
+
 @pytest.mark.unit
 def test_lane_marker_required(pytester: pytest.Pytester) -> None:
-    pytester.makeconftest(CONFTEST.read_text())
+    _configure_project(pytester)
     pytester.makepyfile("def test_no_lane(): pass")
     result = pytester.runpytest()
     assert result.ret == pytest.ExitCode.USAGE_ERROR
@@ -21,7 +26,7 @@ def test_lane_marker_required(pytester: pytest.Pytester) -> None:
 
 @pytest.mark.unit
 def test_two_lane_markers_rejected(pytester: pytest.Pytester) -> None:
-    pytester.makeconftest(CONFTEST.read_text())
+    _configure_project(pytester)
     pytester.makepyfile(
         "import pytest\n@pytest.mark.unit\n@pytest.mark.live\ndef test_both(): pass"
     )
@@ -35,7 +40,7 @@ def test_live_skipped_without_opt_in(
     pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("LGCW_LIVE", raising=False)
-    pytester.makeconftest(CONFTEST.read_text())
+    _configure_project(pytester)
     pytester.makepyfile(
         "import pytest\n@pytest.mark.live\ndef test_live(): raise AssertionError('ran live')"
     )
@@ -45,7 +50,7 @@ def test_live_skipped_without_opt_in(
 @pytest.mark.unit
 def test_live_runs_with_opt_in(pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LGCW_LIVE", "1")
-    pytester.makeconftest(CONFTEST.read_text())
+    _configure_project(pytester)
     pytester.makepyfile("import pytest\n@pytest.mark.live\ndef test_live(): pass")
     pytester.runpytest().assert_outcomes(passed=1)
 
@@ -66,7 +71,7 @@ def test_isolation_overrides_parent_env(
         monkeypatch.setenv(key, "synthetic-parent-value")
     monkeypatch.setenv("LANGSMITH_TRACING", "true")
     monkeypatch.setenv("LGCW_HOME", "/synthetic-parent-home")
-    pytester.makeconftest(CONFTEST.read_text())
+    _configure_project(pytester)
     pytester.makepyfile("""
         import os
         from pathlib import Path
@@ -82,3 +87,25 @@ def test_isolation_overrides_parent_env(
             assert Path(os.environ["LGCW_HOME"]) == tmp_path / "lgcw"
     """)
     pytester.runpytest().assert_outcomes(passed=1)
+
+
+@pytest.mark.unit
+def test_unit_closes_live_guard_but_live_keeps_opt_in(
+    pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LGCW_LIVE", "1")
+    _configure_project(pytester)
+    pytester.makepyfile("""
+        import os
+        import pytest
+
+        @pytest.mark.unit
+        def test_unit_guard_closed():
+            live_flag = os.environ.get("LGCW_LIVE")
+            assert live_flag is None
+
+        @pytest.mark.live
+        def test_live_opt_in_preserved():
+            assert os.environ["LGCW_LIVE"] == "1"
+    """)
+    pytester.runpytest().assert_outcomes(passed=2)

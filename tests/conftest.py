@@ -29,9 +29,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 @pytest.fixture(autouse=True)
-def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def isolated_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     """Isolate local workflow state and remove inherited credentials and tracing."""
     monkeypatch.setenv("LGCW_HOME", str(tmp_path / "lgcw"))
     for key in ("GH_TOKEN", "GITHUB_TOKEN", "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_HOME"):
         monkeypatch.delenv(key, raising=False)
+    if request.node.get_closest_marker("unit") is not None:
+        monkeypatch.delenv("LGCW_LIVE", raising=False)
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
