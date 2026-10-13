@@ -14,10 +14,7 @@ def extract_acceptance_criteria(body: str) -> tuple[str, ...]:
     """Return a named nonempty section's items, or unchecked checklist items as fallback."""
     visible: list[str] = []
     fence: tuple[str, int] | None = None
-    body = re.sub(r"<!--[\s\S]*?(?:-->|$)", "", body)
     for line in body.splitlines():
-        if line.startswith(("    ", "\t")):
-            continue
         match = re.match(r"^\s{0,3}(`{3,}|~{3,})(.*)$", line)
         if match:
             chars, rest = match.groups()
@@ -28,6 +25,20 @@ def extract_acceptance_criteria(body: str) -> tuple[str, ...]:
             continue
         if fence is None:
             visible.append(line)
+    # Fenced examples cannot open a comment that consumes following real criteria.
+    body = re.sub(r"<!--[\s\S]*?-->", "", "\n".join(visible))
+    body = re.sub(r"(?m)^\s*<!--[\s\S]*$", "", body)
+    visible = []
+    in_list = False
+    for line in body.splitlines():
+        indented = line.startswith(("    ", "\t"))
+        if indented and not in_list:
+            continue
+        if _ITEM.match(line):
+            in_list = True
+        elif line.strip() and not indented:
+            in_list = False
+        visible.append(line)
     for index, line in enumerate(visible):
         heading = _HEADING.match(line)
         if heading is None or _SECTION.fullmatch(heading.group(2)) is None:

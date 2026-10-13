@@ -3,6 +3,9 @@
 Question: does removing each guard or PR-body source/dedupe rule fail a behavior assertion?
 Expected: every selected mutation exits pytest with 1; collection errors (2) do not count.
 
+This file is a retained execution transcript, not a reproducible probe distribution. Per the
+running-spikes skill, the throwaway probe is gitignored and is not included in the repository.
+
 The ignored probe copies src/ into a temporary directory without bytecode, verifies lgcw imports
 that copy via PYTHONPATH, mutates one condition at a time and runs the selected unit test against
 real temporary git/fake GitHub. Each mutation is restored in the copy before the next. Production
