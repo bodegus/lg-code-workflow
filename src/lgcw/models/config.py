@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from lgcw.models.base import Strict
 from lgcw.models.review import ReviewLevel
@@ -51,6 +51,13 @@ class Limits(Strict):
     review_fix_rounds: dict[ReviewLevel, Annotated[int, Field(ge=0)]] = Field(
         default_factory=_review_fix_defaults
     )
+
+    @field_validator("review_fix_rounds", mode="before")
+    @classmethod
+    def fill_review_fix_levels(cls, value: object) -> object:
+        """Preserve unspecified default levels in partial TOML maps."""
+        return _review_fix_defaults() | value if isinstance(value, dict) else value
+
     ci_start_grace_s: int = Field(default=600, ge=0)
     ci_deadline_s: int = Field(default=5400, gt=0)
     poll_initial_s: int = Field(default=15, gt=0)
@@ -95,6 +102,13 @@ class WorkflowConfig(Strict):
     limits: Limits
     thresholds: ReviewThresholds
     repos: dict[str, RepoConfig]
+
+    @field_validator("reviewer_effort", mode="before")
+    @classmethod
+    def fill_reviewer_levels(cls, value: object) -> object:
+        """Preserve unspecified effort levels in partial TOML maps."""
+        defaults = {"none": "low", "light": "medium", "standard": "high", "deep": "high"}
+        return defaults | value if isinstance(value, dict) else value
 
     def repo(self, full_name: str) -> RepoConfig:
         """Return a configured target, refusing repositories outside the allowlist.

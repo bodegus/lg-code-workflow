@@ -219,3 +219,19 @@ def test_counts_derived_from_markers() -> None:
     assert (counts.ci_fix_rounds, counts.reruns_by_head["c"], counts.reruns_total) == (1, 2, 2)
     assert (counts.gate_fix_rounds, counts.review_fix_rounds) == (1, 1)
     assert (counts.review_rounds, counts.fresh_restarts) == (1, 1)
+
+
+@pytest.mark.unit
+def test_retry_grants_are_joined_to_prior_questions_and_deduplicated() -> None:
+    counts = _ledger(
+        AckMarker(seq=9, command_id=9, verb="retry"),
+        AskMarker(seq=1, step="build", code="gate_limit"),
+        AckMarker(seq=1, command_id=10, verb="retry"),
+        AckMarker(seq=1, command_id=10, verb="retry"),
+        AskMarker(seq=2, step="ci_wait", code="rerun_limit"),
+        AckMarker(seq=2, command_id=11, verb="answer"),
+        AskMarker(seq=3, step="review", code="review_limit"),
+        AckMarker(seq=3, command_id=12, verb="retry"),
+    ).counts()
+    assert counts.retry_grants == {"build": {"gate_limit": 1}, "review": {"review_limit": 1}}
+    assert counts.gate_fix_rounds == counts.reruns_total == 0

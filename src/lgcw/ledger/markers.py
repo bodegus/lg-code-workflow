@@ -19,15 +19,21 @@ def render_marker(marker: Marker) -> str:
 
 
 def parse_markers(body: str) -> list[Marker]:
-    """Parse valid v1 markers, ignoring malformed or unknown records."""
-    adapter = TypeAdapter(Marker)
-    markers: list[Marker] = []
-    for match in re.finditer(r"<!-- lgcw:v1 (\{.*?\}) -->", body, flags=re.DOTALL):
-        try:
-            markers.append(adapter.validate_python(json.loads(match.group(1))))
-        except (ValueError, RecursionError):
-            continue
-    return markers
+    """Accept one complete trailing record; quoted/multiple records are not facts."""
+    prefix = "<!-- lgcw:v1 "
+    start = body.rfind(prefix)
+    if start < 0:
+        return []
+    pattern = r"\{[^\n]*\} -->\s*\Z"
+    trailing = re.fullmatch(pattern, body[start + len(prefix) :])
+    # An incomplete earlier prefix is data, but any earlier complete marker is ambiguous.
+    if trailing is None or re.search(r"<!-- lgcw:v1 \{[^\n]*\} -->", body[:start]):
+        return []
+    payload = body[start + len(prefix) :].rstrip().removesuffix(" -->")
+    try:
+        return [TypeAdapter(Marker).validate_python(json.loads(payload))]
+    except (ValueError, RecursionError):
+        return []
 
 
 def strip_markers(body: str) -> str:

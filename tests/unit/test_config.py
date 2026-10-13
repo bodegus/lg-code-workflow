@@ -126,3 +126,20 @@ def test_invalid_limit_rejected(config_project: Path) -> None:
     (config_project / "config" / "workflow.toml").write_text("[limits]\nci_fix_rounds = -1\n")
     with pytest.raises(ConfigError):
         load_config(config_project)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("mapping", ["reviewer_effort", "limits.review_fix_rounds"])
+def test_partial_level_maps_fill_defaults(config_project: Path, mapping: str) -> None:
+    value = '"medium"' if mapping == "reviewer_effort" else "3"
+    (config_project / "config" / "workflow.toml").write_text(f"[{mapping}]\ndeep = {value}\n")
+    config = load_config(config_project)
+    if mapping == "reviewer_effort":
+        assert config.reviewer_effort == {
+            "none": "low",
+            "light": "medium",
+            "standard": "high",
+            "deep": "medium",
+        }
+    else:
+        assert config.limits.review_fix_rounds == {"none": 0, "light": 1, "standard": 2, "deep": 3}

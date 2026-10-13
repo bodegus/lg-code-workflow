@@ -141,6 +141,7 @@ class LedgerCounts(Strict):
     reruns_total: int = Field(default=0, ge=0)
     review_rounds: int = Field(default=0, ge=0)
     fresh_restarts: int = Field(default=0, ge=0)
+    retry_grants: dict[Step, dict[str, int]] = Field(default_factory=dict)
 
 
 class PrLedger(Strict):
@@ -195,9 +196,24 @@ class PrLedger(Strict):
         """Recompute all activity counts from markers, without mutating the ledger."""
         gate_fixes = ci_fixes = review_fixes = review_rounds = fresh_restarts = 0
         reruns_by_head: dict[str, int] = {}
+        questions: dict[int, AskMarker] = {}
+        granted_commands: set[int] = set()
+        grants: dict[Step, dict[str, int]] = {}
         for entry in self.entries:
             marker = entry.marker
-            if isinstance(marker, PushMarker):
+            if isinstance(marker, AskMarker):
+                questions[marker.seq] = marker
+            elif (
+                isinstance(marker, AckMarker)
+                and marker.verb == "retry"
+                and marker.command_id not in granted_commands
+                and marker.seq in questions
+            ):
+                question = questions[marker.seq]
+                codes = grants.setdefault(question.step, {})
+                codes[question.code] = codes.get(question.code, 0) + 1
+                granted_commands.add(marker.command_id)
+            elif isinstance(marker, PushMarker):
                 gate_fixes += marker.source == "gate_fix"
                 ci_fixes += marker.source == "ci_fix"
                 review_fixes += marker.source == "review_fix"
@@ -215,6 +231,7 @@ class PrLedger(Strict):
             reruns_total=sum(reruns_by_head.values()),
             review_rounds=review_rounds,
             fresh_restarts=fresh_restarts,
+            retry_grants=grants,
         )
 
 
