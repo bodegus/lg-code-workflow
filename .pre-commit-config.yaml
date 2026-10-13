@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-toml
+      - id: check-yaml
+      - id: check-added-large-files
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+        files: ^(src|tests)/
+        args: [--fix]
+      - id: ruff-format
+        files: ^(src|tests)/
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy strict
+        entry: uv run mypy src tests
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: unit
+        name: unit lane
+        entry: uv run pytest -m unit --cov=lgcw
+        language: system
+        pass_filenames: false
+        types: [python]

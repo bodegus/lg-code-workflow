@@ -82,7 +82,7 @@ background in [research/README.md](research/README.md).
 **Interfaces:**
 - Produces: `lgcw.__version__: str`; markers `unit`, `live`; autouse fixture `isolated_env` (sets `LGCW_HOME` to `tmp_path/"lgcw"`, removes `GH_TOKEN`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `CODEX_HOME`, sets `LANGSMITH_TRACING=false`); `pytest_collection_modifyitems` rejects a test without exactly one lane; `live` tests skipped unless `LGCW_LIVE=1`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 @pytest.mark.unit
@@ -101,10 +101,10 @@ def test_isolated_env_removes_tokens() -> None:
     assert "GH_TOKEN" not in os.environ and os.environ["LANGSMITH_TRACING"] == "false"
 ```
 
-- [ ] **Step 2: Run them to see them fail** — `uv run pytest -m unit` → errors (no package, no conftest).
-- [ ] **Step 3: Create the project files.** `pyproject.toml` with the Global Constraints' versions, tool sections and coverage settings (`[tool.coverage.run] source = ["lgcw"]`, `omit` the two live adapters, `[tool.coverage.report] fail_under = 90`). `Makefile` targets: `setup` (`uv sync` + `uv run pre-commit install`), `lint` (`uv run ruff check src tests` and `uv run ruff format --check src tests`), `type` (`uv run mypy src tests`), `test` (`uv run pytest -m unit --cov=lgcw`), `check` (lint, type, test), `live` (`LGCW_LIVE=1 uv run pytest -m live`). Pre-commit: gitleaks, trailing-whitespace, end-of-file-fixer, check-toml, check-yaml, check-added-large-files, ruff check/format, mypy, `pytest -m unit`. CI workflow on `pull_request` and `push` to `main`: ubuntu-latest, `astral-sh/setup-uv`, `uv sync --locked`, `make check`.
-- [ ] **Step 4: Run** `uv sync && make check` → all pass, coverage report printed.
-- [ ] **Step 5: Commit** `chore: project skeleton, toolchain and test lanes`.
+- [x] **Step 2: Run them to see them fail** — `uv run pytest -m unit` → errors (no package, no conftest).
+- [x] **Step 3: Create the project files.** `pyproject.toml` with the Global Constraints' versions, tool sections and coverage settings (`[tool.coverage.run] source = ["lgcw"]`, `omit` the two live adapters, `[tool.coverage.report] fail_under = 90`). `Makefile` targets: `setup` (`uv sync` + `uv run pre-commit install`), `lint` (`uv run ruff check src tests` and `uv run ruff format --check src tests`), `type` (`uv run mypy src tests`), `test` (`uv run pytest -m unit --cov=lgcw`), `check` (lint, type, test), `live` (`LGCW_LIVE=1 uv run pytest -m live`). Pre-commit: gitleaks, trailing-whitespace, end-of-file-fixer, check-toml, check-yaml, check-added-large-files, ruff check/format, mypy, `pytest -m unit`. CI workflow on `pull_request` and `push` to `main`: ubuntu-latest, `astral-sh/setup-uv`, `uv sync --locked`, `make check`.
+- [x] **Step 4: Run** `uv sync && make check` → all pass, coverage report printed.
+- [x] **Step 5: Commit** `chore: project skeleton, toolchain and test lanes`.
 
 ### Task T1: Core models and strict output schemas
 

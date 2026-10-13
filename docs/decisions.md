@@ -141,3 +141,19 @@ our own code. Research references point into [research/](research/).
   review comment per head SHA with a findings ledger; one ledger reply per review).
 - **Revisit when:** a GitHub App gives the agents distinct identities (Phase 2), so signatures are
   no longer the only way to tell them apart.
+
+## D-016 T0 toolchain: locked environments and pinned CI actions
+
+- **Decided:** 2026-10-13, T0 builder. Use only the runtime dependencies already approved in
+  D-002, D-008 and D-013 at the plan's constraints, resolved in `uv.lock`; no additional runtime
+  dependency. Local hooks use the same uv environment for mypy and the unit lane.
+- **CI:** `actions/checkout` v7.0.1 and `astral-sh/setup-uv` v10.3.0 are pinned to their commit
+  SHAs, verified through GitHub's commits API. Permissions are `contents: read`, checkout does
+  not persist credentials, and CI uses `uv sync --locked` then `make check` on Python 3.13.
+- **Evidence:** T0's PR records the failing-first run, dependency sync, local checks and hooks.
+  Lane collection tests use pytest's bundled `pytester` plugin, not mocks or new dependencies;
+  the opt-in test runs only a synthetic live-marked function and contacts no real service.
+- **Not implemented yet:** the `lgcw` entry point is declared as specified in the plan; its CLI
+  module and functional commands belong to T17, so T0 does not claim `lgcw doctor` works.
+- **Revisit when:** a dependency or action upgrade requires a different Python/runtime version,
+  or the actual T17 CLI needs a different entry point.
