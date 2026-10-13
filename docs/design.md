@@ -368,7 +368,12 @@ Inspecting runs is the main output of Phase 1, so every run writes, under
   turn with tokens (cached separately), rounds per loop, CI actions, findings and dispositions, and
   links to the raw files.
 
-All writes go through `redact()`, which removes token-shaped strings. Nothing is sent to a tracing
+All writes redact credential-shaped strings. Structured JSON redacts each value before
+serialization, so header redaction cannot consume neighboring fields. RunLog.write_report saves
+the semantically redacted derived view atomically without a second regex pass. Raw artifacts/turns
+cannot overwrite different evidence; report.md can be regenerated. Report reads stay inside the
+run folder, unknown usage remains unknown, and a later invocation without run_end is incomplete
+rather than inheriting an earlier completed outcome (D-027). Nothing is sent to a tracing
 service (`LANGSMITH_TRACING=false`).
 
 ## 12. Configuration

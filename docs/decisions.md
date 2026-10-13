@@ -431,3 +431,36 @@ our own code. Research references point into [research/](research/).
   No token, network, agent process or LLM is used by these contracts.
 - **Dependencies:** reuse Pydantic and stdlib json/re/importlib resources/collections; no library
   or SDK implementation added. T10 supplies the real adapter after its required live spike.
+
+## D-027 T11 structured redaction, immutable artifacts and honest usage reports
+
+- **Decided:** 2026-10-13. Implement T11 independently while T10's mandatory owner-login/live
+  spike prerequisite remains missing; do not tick T10 or substitute fake SDK qualification.
+  Reuse D-011's stdlib JSON/path/log approach and T5's redact; no dependency added.
+- **Structured writes:** redact each JSON string before serialization, including nested output
+  and explicit credential-header keys. Applying the Authorization regex to an already-encoded
+  JSON line can consume its closing quote/braces; the regression must retain parseable JSON and
+  neighboring fields. Timestamp/kind/node/fields form typed event records; turns have typed
+  prompt/outcome/usage records. Optional injected Clock supports deterministic graph evidence.
+  A new failing report regression also caught header-regex removal of neighboring display
+  fields; render structured cells by redacting values first, serializing, then Markdown escaping.
+- **Files:** events append; individual turns and artifacts write atomically with private file
+  permissions and cannot overwrite different existing evidence. Paths stay inside the run root,
+  cannot traverse symlinks outside it, and cannot target repo/review checkout directories. Posted
+  bodies have IDs in a JSON metadata fence and their exact redacted Markdown below it.
+  The derived report.md view may be regenerated atomically; raw evidence remains immutable.
+  Add write_report() for CLI/integration: render and atomically save the already semantically
+  redacted view. Another failing regression caught the plain-text artifact writer reapplying the
+  header regex to rendered JSON cells. For report.md, artifact accepts only the generated view
+  and saves it without a second regex pass; arbitrary text at that reserved path is rejected.
+- **Report:** render available local evidence without routing from it. Include outcome, node
+  timeline, every agent turn, input/cached/output/reasoning usage, known-usage totals, loop rounds,
+  CI decisions, findings and dispositions. Input includes cached tokens; reasoning is reported
+  separately without adding it to output again. An errored turn without usage is unknown, not
+  zero; malformed/truncated local records produce an explicit report warning. Monetary pricing
+  is outside this interface. Controller events supply durable-ledger counts in later integration.
+  Two additional failing regressions exposed an outside-folder turn symlink and a stale completed
+  outcome after a later invocation began. Bound report reads to the run directory and mark the
+  latest invocation incomplete if it has no run_end; a log alone never proves a live process.
+- **Revisit when:** Phase 1 run inspection needs another report view or multi-process writes.
+  Local files are evidence/cache only; GitHub remains the workflow's canonical progress record.

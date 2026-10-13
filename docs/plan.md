@@ -399,13 +399,16 @@ T9 proof: three missing-module collection errors first. Wheel inspection exposed
 - Create: `tests/unit/runlog/test_redact.py`, `test_log.py`, `test_report.py`
 
 **Interfaces:**
-- Produces: `redact(text: str) -> str` (masks `gh[pousr]_…`, `github_pat_…`, `sk-…`, three-part JWTs, `Authorization:` headers, `x-access-token:` URLs); `RunLog(run_dir: Path)` with `event(kind: str, *, node: str | None = None, **fields: JsonValue) -> None` (JSONL with ISO timestamp, redacted), `turn(seq: int, role: Role, turn: TurnInput, outcome: TurnOutcome[Any] | None, error: str | None) -> Path`, `artifact(rel: str, content: str) -> Path`, `posted(kind: str, body: str, ids: Mapping[str, str | int]) -> Path`; `render_report(run_dir: Path) -> str`.
+- Produces: `redact(text: str) -> str` (masks `gh[pousr]_…`, `github_pat_…`, `sk-…`, three-part JWTs, `Authorization:` headers, `x-access-token:` URLs); `RunLog(run_dir: Path, *, clock: Clock | None = None)` (D-027) with `event(kind: str, *, node: str | None = None, **fields: JsonValue) -> None` (JSONL with ISO timestamp, redacted), `turn(seq: int, role: Role, turn: TurnInput, outcome: TurnOutcome[Any] | None, error: str | None) -> Path`, `artifact(rel: str, content: str) -> Path`, `posted(kind: str, body: str, ids: Mapping[str, str | int]) -> Path`; `write_report() -> Path` (atomically saves the semantically redacted derived view), `render_report(run_dir: Path) -> str`.
 
-- [ ] **Step 1: Write the failing tests**: one redaction case per pattern; `test_events_are_jsonl_with_timestamps`; `test_report_has_timeline_turns_and_totals` (a synthetic run folder: report contains the step table, one row per turn with input, cached, output and reasoning tokens, and totals); `test_report_empty_run`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(runlog): run log, redaction and report`.
+- [x] **Step 1: Write the failing tests**: one redaction case per pattern; `test_events_are_jsonl_with_timestamps`; `test_report_has_timeline_turns_and_totals` (a synthetic run folder: report contains the step table, one row per turn with input, cached, output and reasoning tokens, and totals); `test_report_empty_run`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(runlog): run log, redaction and report`.
+
+
+T11 proof: missing RunLog imports caused two collection errors first. New report regressions failed before fixes for neighboring-field loss after header redaction, outside-run turn symlinks, an earlier completed outcome after a newer unfinished invocation, and a second redaction pass on saved report cells. Final `make check`: 345 unit tests, 1 live deselected, strict mypy (89 files), lint/format, 97.99% coverage. The two failed E501 attempts were recorded on PR #1; independent type/runtime checks and a measured shorter-literal probe resolved formatting without suppression. D-027 records evidence/derived-view distinctions. T10 stays pending its owner-login/live spike.
 
 ### Task T12: Graph skeleton — context, reconcile, routers, wiring
 
