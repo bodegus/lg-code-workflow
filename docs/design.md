@@ -257,7 +257,9 @@ Step details:
 
 `pick_level` (pure) uses `git diff --numstat` over base..head (excluding `excluded_globs`: lockfiles,
 generated, vendored), the repo's risk-class globs, owner labels and the handoff's `risks`. A human
-label wins; nothing an agent writes can lower a level. Thresholds are config (re-fit after about 30
+label chooses the initial level; a previous decision remains a floor on fix deltas. Conflicting
+owner labels choose the strongest level. Nothing an agent writes can lower a level. Manifest
+changes conservatively select deep because numstat cannot prove no dependency was added (D-024). Thresholds are config (re-fit after about 30
 runs).
 
 | Level | When (first match) | Reviewers | Effort | Blocks on | Fix rounds |
@@ -268,7 +270,10 @@ runs).
 | none | only docs/tests/generated files, CI green, no agent instructions | 0 | — | — | — |
 
 Rules (code): a finding blocks only if it is P0/P1 (P2 security at deep), inside the reviewed lines
-and above the level's confidence bar. At standard and deep, each blocking finding first gets a
+and above the level's confidence bar (light >= 0.7; standard/deep defer confidence to the
+independent verifier). The complete finding range must lie inside one reviewed range; reject
+absolute locations outside the checkout and all parent traversal. This gate is lexical and
+performs no filesystem reads. At standard and deep, each blocking finding first gets a
 verifier turn (`FindingCheck`: valid, introduced by the change); only confirmed ones reach the
 builder. Everything else is listed once in the review body and never raised again (dedupe by
 `finding_id = sha256(path, normalized title, category)[:16]` against existing threads). Re-reviews

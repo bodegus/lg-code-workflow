@@ -338,3 +338,30 @@ our own code. Research references point into [research/](research/).
   standard-library re/path/hash helpers; no package added and no service/LLM calls.
 - **Revisit when:** live runs reveal a missing CI signal or changed payload semantics; keep
   exact-head evidence and hard caps while adjusting the table with recorded examples.
+
+## D-024 T7 conservative review selection and deterministic finding admission
+
+- **Decided:** 2026-10-13, T7 builder. Diff stats cannot tell whether a manifest edit adds a
+  dependency, so changes to dependency manifests conservatively select deep review. Lockfiles
+  remain governed by configured exclusions. Built-in CI/instruction paths always select deep;
+  repo risk classes can add paths. `deploy_ops` selects standard with an ops lens; other named
+  risk classes select deep. Builder risks raise none/light to standard, never lower a level.
+- **Labels and re-entry:** owner overrides choose the initial level, but a previous decision's
+  floor still applies on fix deltas. Conflicting owner labels choose the strongest level.
+  Preserve previous reasons and standard-tier lenses; deep uses exactly general/security/tests,
+  including when operations paths also change. A regression caught and removed an accidental
+  fourth ops reviewer on escalation. The caller must
+  supply only authenticated owner labels, not agent-created label claims.
+- **Admission:** light requires confidence >= 0.7 for blocking priority findings; standard/deep
+  use the independent verifier as the confidence check (no additional numeric floor specified
+  by the design). None blocks nothing. P2 security blocks only at deep. A location must be an
+  absolute lexical path inside the checkout, with no parent traversal, and its entire inclusive
+  range must lie in one reviewed range. This pure function does not inspect the filesystem;
+  checkout safety and symlink handling remain workspace responsibilities.
+- **Deduplication:** normalize title whitespace/case and its leading priority tag, plus category
+  case. Keep path case. Process strongest priority/confidence first, then stable lens/path/title
+  ordering; a duplicate is dropped even across lenses. Return rejection reasons for malformed
+  paths, outside-range locations, unrequested lenses and known IDs rather than silently losing
+  evidence. No dependency or I/O added: stdlib PurePosixPath.full_match, parsing and existing hash.
+- **Revisit when:** a measured review miss or noisy manifest-only review warrants a richer typed
+  input. Never infer a dependency's absence from line counts or allow fix deltas to lower review.

@@ -324,11 +324,14 @@ T6 proof: missing CI modules produced three collection errors first. Final `make
 - Consumes: `DiffStat`, `FileChange`, `LevelDecision`, `LensVerdict`, `GatedFinding`, `GateResult`, `Risk`, `RepoConfig`, `ReviewThresholds`, `Limits` (T1).
 - Produces: `parse_numstat(text: str, excluded_globs: Sequence[str]) -> DiffStat` (binary files count as 1 line); `pick_level(diff: DiffStat, owner_labels: Sequence[str], builder_risks: Sequence[Risk], repo: RepoConfig, thresholds: ReviewThresholds, limits: Limits, *, previous: LevelDecision | None = None) -> LevelDecision` (first match in design §7; owner label wins; `previous` can only be raised); `finding_id(path: str, title: str, category: str) -> str`; `gate_findings(results: Sequence[LensVerdict], level: LevelDecision, ranges: Mapping[str, Sequence[LineRange]], repo_root: Path, known_ids: Collection[str]) -> GateResult`. Glob matching with `PurePosixPath.full_match`.
 
-- [ ] **Step 1: Write the failing tests** (table-driven): docs-only → `none`; 40 source lines → `light`; 120 lines → `standard` with lens `general`; source without tests → lenses include `tests`; `.github/workflows/ci.yml` → `deep` with `("general", "security", "tests")`; owner label `lgcw:review-light` on a deep change → `light`; a builder risk raises light → standard; `previous=deep` stays `deep`; gate: P1 inside range blocks, P1 outside range dropped, P2 at standard non-blocking, P2 `security` at deep blocking, confidence 0.6 at light non-blocking, a known id is not repeated.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(review): review levels and finding gate`.
+- [x] **Step 1: Write the failing tests** (table-driven): docs-only → `none`; 40 source lines → `light`; 120 lines → `standard` with lens `general`; source without tests → lenses include `tests`; `.github/workflows/ci.yml` → `deep` with `("general", "security", "tests")`; owner label `lgcw:review-light` on a deep change → `light`; a builder risk raises light → standard; `previous=deep` stays `deep`; gate: P1 inside range blocks, P1 outside range dropped, P2 at standard non-blocking, P2 `security` at deep blocking, confidence 0.6 at light non-blocking, a known id is not repeated.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(review): review levels and finding gate`.
+
+
+T7 proof: three missing-module collection errors first; a new deep+ops regression failed with a fourth reviewer before the implementation fix. Final `make check`: 270 unit tests, 1 live deselected, strict mypy (68 files), lint/format, 99.53% coverage. D-024 records conservative manifests, owner-label/previous-depth precedence, confidence and lexical location admission. No live calls required.
 
 ### Task T8: Workspace — git wrapper and per-issue clone
 
