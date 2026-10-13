@@ -311,3 +311,30 @@ our own code. Research references point into [research/](research/).
   qualification remains pending. Continue independent work while the fixture and dedicated
   Codex login prerequisites await the owner. Update this decision with the actual choice and
   live receipts before marking the live task complete.
+
+## D-023 T6 CI decisions require exact-head and rerun-class evidence
+
+- **Decided:** 2026-10-13, T6 builder. Add required keyword `pushed_sha` to `decide`: a missing
+  run cannot supply the SHA for its own decision, and guessing an empty or foreign SHA would
+  corrupt the durable record. Add optional `CiHistory.reruns_by_class_head`, reconstructed from
+  CI markers, to enforce the table's per-class caps. Unknown prior class consumption cannot
+  authorize another automatic rerun. Existing history fields remain supported.
+- **Run ordering:** add optional `RunView.created_at`, mapped from the service. Choose the latest
+  run per workflow and its latest attempt; legacy/synthetic records without a timestamp use
+  run ID and attempt order. Never reuse an old successful attempt while a newer one is queued.
+  Evaluate every same-named job instance in the selected attempt, not just one matrix result.
+- **Qualification:** required skipped/neutral jobs block. An active required workflow is still
+  pending even if its currently observed jobs pass. A waiting deadline cannot invalidate a
+  completed current-head result: it bounds waiting, while re-entry can observe terminal truth.
+  No configured checks does not make an empty run set green.
+- **Decision aggregation:** evaluate every failing required job and choose the most blocking
+  action (ask, fix, rerun, wait, proceed-note). A pre-existing failure cannot hide another
+  introduced failure. Preserve workflow/job identity in fingerprints; normalize paths/digits
+  only in the error text so matrix job names remain distinct.
+- **Logs:** select the named failing group or the first error's group, retain first-error context
+  and failing-step tail, strip ANSI/timestamps, redact credentials, then enforce the UTF-8 byte
+  cap. Full logs and the combined 16 KiB cap remain the CI-wait node's responsibility.
+- **Dependency check:** these are domain policy tables using existing models/redaction and
+  standard-library re/path/hash helpers; no package added and no service/LLM calls.
+- **Revisit when:** live runs reveal a missing CI signal or changed payload semantics; keep
+  exact-head evidence and hard caps while adjusting the table with recorded examples.

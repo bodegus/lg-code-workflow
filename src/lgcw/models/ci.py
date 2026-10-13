@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from pydantic import Field
+
 from lgcw.models.base import Strict
 from lgcw.models.github import JobView
 
@@ -45,3 +47,4 @@ class CiHistory(Strict):
     reruns_total: int
     ci_fix_rounds: int
     fingerprints: tuple[str, ...]
+    reruns_by_class_head: dict[str, dict[CiClass, int]] = Field(default_factory=dict)

@@ -1,0 +1,15 @@
+{
+  "job_id": 1,
+  "run_id": 1,
+  "workflow": "CI",
+  "name": "test",
+  "status": "completed",
+  "conclusion": "failure",
+  "run_attempt": 1,
+  "failed_steps": [
+    "Run tests"
+  ],
+  "annotations": [],
+  "runner_name": "synthetic",
+  "url": "https://example.test/job"
+}

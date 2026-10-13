@@ -164,6 +164,7 @@ def _run_from_rest(data: dict[str, Any]) -> RunView:
         conclusion=data.get("conclusion"),
         head_sha=data["head_sha"],
         run_attempt=data["run_attempt"],
+        created_at=data.get("created_at"),
     )
 
 

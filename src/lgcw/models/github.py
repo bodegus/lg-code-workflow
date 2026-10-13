@@ -80,6 +80,7 @@ class RunView(Strict):
     conclusion: str | None
     head_sha: str
     run_attempt: int
+    created_at: datetime | None = None
 
 
 class JobView(Strict):

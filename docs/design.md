@@ -279,14 +279,21 @@ owner in the summary, not looped on. The builder answers each blocking finding w
 
 ## 8. CI handling
 
-`classify(required, runs, jobs, pr, pushed_sha, pushed_at, now) -> (CiStatus, failing_jobs)` (pure).
+`classify(required, runs, jobs, pr, pushed_sha, pushed_at, now, limits) -> (CiStatus, failing_jobs)` (pure).
 Required checks are `(workflow name, job name)` pairs from repo config, unioned with any the
 repository's rulesets report. States: `pending` (no checks yet, or required not reported, or running),
 `success`, `failure`, `blocked` (cancelled or stale without a timeout annotation), `missing` (nothing
 after `ci_start_grace_s`, default 600), `conflict`, `head_moved`, `timeout` (past `ci_deadline_s`,
 default 5,400). Poll interval starts at 15 s and doubles to 120 s; a heartbeat each round.
 
-`decide(...) -> CiDecision` (pure), first matching row per failing required job:
+`decide(..., *, pushed_sha) -> CiDecision` (pure), first matching row per failing required job.
+The exact owned head is required even when no run exists; per-class rerun counts come from the
+ledger. Choose the latest run/attempt per workflow and evaluate every required job instance.
+Required skipped/neutral checks block; active required workflows remain pending. The deadline
+bounds waiting, while completed current-head results remain authoritative after it. Aggregate
+job actions by ask > fix > rerun > wait > proceed-note, so one pre-existing failure cannot conceal
+an introduced failure (D-023).
+
 
 | Class | Signal | Action |
 |---|---|---|
