@@ -194,7 +194,7 @@ def test_issue_ref_parse():
 - Consumes: marker models, `IssueComment`, `ReviewThread`, `Command` (T1).
 - Produces: `render_marker(marker: Marker) -> str`; `parse_markers(body: str) -> list[Marker]` (malformed JSON or unknown kind is skipped, never raises); `strip_markers(body: str) -> str`; `parse_command(body: str) -> tuple[Literal["answer", "retry", "abort"], str] | None` (first non-empty line `/lgcw <verb> [text]`; text = rest of the line plus following lines); `fingerprint(*parts: str) -> str` (sha256 hex, first 16 chars); `build_ledger(issue_comments: Sequence[IssueComment], pr_comments: Sequence[IssueComment], threads: Sequence[ReviewThread], workflow_login: str) -> PrLedger`; `owner_commands(comments: Sequence[IssueComment], allowed_authors: Collection[str], after_comment_id: int) -> list[Command]`; `PrLedger` methods `latest(kind) -> LedgerEntry | None`, `of_kind(kind) -> list[LedgerEntry]`, `pending_ask() -> LedgerEntry | None` (an `ask` without a later `ack` of the same `seq`), `last_push() -> PushMarker | None`, `ci_for(head_sha) -> CiMarker | None`, `reviews_for(head_sha) -> list[ReviewMarker]`, `counts() -> LedgerCounts` (gate/ci/review fix rounds, reruns per head and total, review rounds, fresh restarts — all derived from `push`, `ci`, `review`, `session` markers).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_marker_round_trip_with_hostile_text():
@@ -225,10 +225,10 @@ def test_counts_derived_from_markers():
     assert (c.ci_fix_rounds, c.reruns_by_head["c"], c.reruns_total) == (1, 1, 1)
 ```
 
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.** `render_marker` uses `json.dumps(..., separators=(",", ":"), ensure_ascii=True)` and then replaces every `--` in that text with a hyphen followed by the JSON escape for a hyphen (backslash, `u002d`), which is valid inside JSON strings and never needed elsewhere in compact JSON, so ` -->` can never occur inside a marker; `parse_markers` uses the regex `<!-- lgcw:v1 (\{.*?\}) -->` and `TypeAdapter(Marker)`.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(ledger): markers, owner commands and the PR ledger`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.** `render_marker` uses `json.dumps(..., separators=(",", ":"), ensure_ascii=True)` and then replaces every `--` in that text with a hyphen followed by the JSON escape for a hyphen (backslash, `u002d`), which is valid inside JSON strings and never needed elsewhere in compact JSON, so ` -->` can never occur inside a marker; `parse_markers` uses the regex `<!-- lgcw:v1 (\{.*?\}) -->` and `TypeAdapter(Marker)`.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(ledger): markers, owner commands and the PR ledger`.
 
 ### Task T4: GitHub port, fake and renderers
 

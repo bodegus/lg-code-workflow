@@ -204,3 +204,29 @@ our own code. Research references point into [research/](research/).
   intentionally has empty setup/gate commands as the task specifies; CI is still mandatory.
 - **Revisit when:** a target's workflow or job names change, or sandbox preparation removes its
   branch guard. Re-read actual target CI before a live run; do not classify skipped checks green.
+
+## D-019 T3 durable-record parsing and counter semantics
+
+- **Decided:** 2026-10-13, T3 builder. Use the plan's compact JSON wire format and escape every
+  `--` in JSON data as a hyphen plus `\u002d`, preventing data from closing its HTML comment.
+  Parse v1 blocks with the prescribed regex and Pydantic discriminated union; malformed and
+  unknown records are ignored. No dependency beyond approved Pydantic and standard-library
+  json, re and hashlib.
+- **Identity and commands:** only exact workflow-login authorship admits ledger facts; only
+  configured author logins admit commands after the question ID. Any workflow-marker prefix,
+  including malformed/unknown markers, excludes a comment from owner commands. Parse commands
+  only on the first nonempty line; preserve multiline answer content.
+- **Ordering:** issue/PR facts retain service timestamps. The binding `ThreadComment` has no
+  timestamp, so finding-thread facts use UTC minimum as an explicit unknown-time sentinel,
+  ordered by comment ID. That sentinel is not evidence of when a finding occurred.
+- **Counts:** fix counts reflect published `push` source markers, reruns reflect `ci` actions,
+  review rounds reflect review markers, and fresh restarts reflect session markers. No local
+  counter is persisted. Questions are pending only without a later matching acknowledgement.
+- **Integration limit to resolve before T12/T14:** these current markers do not record
+  pre-publication gate-fix attempts or a complete recoverable handoff. Their persistence and
+  crash behavior need explicit integration facts/tests before claiming restart qualification.
+  T3 proves pure reconstruction from supplied records, not the unbuilt graph's crash recovery.
+- **Evidence:** initial three missing-module errors; full gate passes with 103 unit tests and
+  100% current-package line coverage. PR proof includes the actual commands and output.
+- **Revisit when:** integration needs additional durable facts, or review-thread timestamp data
+  is added to the binding GitHub record model.
