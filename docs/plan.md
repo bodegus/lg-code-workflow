@@ -456,12 +456,23 @@ T12 proof: missing graph modules caused three collection errors first; the no-in
 **Interfaces:**
 - Consumes: T12 graph, fakes.
 - Produces: node functions registered in `DEFAULT_NODES`; `reconcile` node applies an owner command by writing an `ack` marker before routing.
+- Recovery extensions (D-031): typed `IntakeMarker`, `BootstrapMarker` (including linked PR number), `SetupMarker`, `CommandDoneMarker`; optional frozen intake/checkpoint fields on `RunMarker` and command/step/adoption fields on `AckMarker`; `LedgerEntry.where` additionally accepts `pr_body` for atomic initial identity. `GitHubPort.branch_head/get_pr_document`, `PrDocument`, and `WorkspacePort.commit_message` supply plain-code verification reads. `RunContext.tokens` is excluded/non-repr and used only by `push_auth`. Identical run body/comment copies are one fact; setup results and command continuations never replay blindly.
 
-- [ ] **Step 1: Write the failing tests**: criteria table (`## Acceptance criteria` list, `### Done when`, checklist only, none → empty); graph tests `test_incomplete_issue_asks_on_issue` (one `ask` comment on the issue, label `lgcw:waiting`, outcome `waiting`), `test_rerun_while_waiting_posts_nothing`, `test_owner_answer_resumes_to_open_pr` (one `ack`, then a draft PR), `test_open_pr_once_across_crash` (`fail_after("create_draft_pr", 0)` then rerun → exactly one PR, one push of the empty commit, its message contains `[skip ci]`), `test_foreign_author_issue_blocked`, `test_abort_blocks`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the nodes; every side effect checks the ledger or the remote first.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(graph): intake, open_pr, ask and blocked`.
+- [x] **Step 1: Write the failing tests**: criteria table (`## Acceptance criteria` list, `### Done when`, checklist only, none → empty); graph tests `test_incomplete_issue_asks_on_issue` (one `ask` comment on the issue, label `lgcw:waiting`, outcome `waiting`), `test_rerun_while_waiting_posts_nothing`, `test_owner_answer_resumes_to_open_pr` (one `ack`, then a draft PR), `test_open_pr_once_across_crash` (`fail_after("create_draft_pr", 1)` then rerun → exactly one PR, one push of the empty commit, its message contains `[skip ci]`), `test_foreign_author_issue_blocked`, `test_abort_blocks`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** the nodes; every side effect checks the ledger or the remote first.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(graph): intake, open_pr, ask and blocked`.
+
+T13 proof: criteria/module failures first, then 11/20 compiled-graph cases failed before the real
+registry/nodes existed. Additional unchanged regressions failed for marker-safe posted receipts,
+answered-intake re-entry, exact human-head adoption and duplicate grants for one question.
+The original bootstrap case checks commit/push/draft/label response losses; every comment boundary
+and every owner-answer boundary also recover to one initial commit, push and PR. Setup unknown
+results ask without replay; closed PRs remain linked; human adoption retains owner history across
+ack/push-marker/completion losses. Unit-only continuation stops at a build checkpoint; this is not
+a full workflow execution. Live prerequisites are now available (D-032), but no live call ran for
+this task. The default graph still refuses missing T14–T16 nodes.
 
 ### Task T14: Nodes — build, gate, publish (with the fresh-builder rule)
 

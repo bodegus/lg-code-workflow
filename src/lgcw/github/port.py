@@ -8,6 +8,7 @@ from typing import Literal, Protocol, runtime_checkable
 from lgcw.models.github import (
     IssueComment,
     JobView,
+    PrDocument,
     PrReview,
     PrSnapshot,
     ReviewCommentDraft,
@@ -19,6 +20,7 @@ from lgcw.models.issue import IssueRef, IssueSnapshot
 type ResolveReason = Literal["ADDRESSED", "WONT_FIX", "INVALID"]
 
 
+@runtime_checkable
 class TokenProvider(Protocol):
     """Code-only access to a GitHub credential."""
 
@@ -53,6 +55,14 @@ class GitHubPort(Protocol):
 
     async def get_pr(self, repo: str, number: int) -> PrSnapshot:
         """Read the current head and merge conditions."""
+        ...
+
+    async def branch_head(self, repo: str, branch: str) -> str | None:
+        """Read a remote branch without creating it; absence returns None."""
+        ...
+
+    async def get_pr_document(self, repo: str, number: int) -> PrDocument:
+        """Read the authenticated body marker after a lost create response."""
         ...
 
     async def create_draft_pr(

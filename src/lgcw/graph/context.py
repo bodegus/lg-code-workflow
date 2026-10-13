@@ -6,11 +6,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Self
 
 from langgraph.runtime import Runtime
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, Field, SecretStr, model_validator
 
 from lgcw.clock import Clock
-from lgcw.git.port import WorkspacePort
-from lgcw.github.port import GitHubPort
+from lgcw.git.port import PushAuth, WorkspacePort
+from lgcw.github.port import GitHubPort, TokenProvider
 from lgcw.harness.port import HarnessPort
 from lgcw.models.base import Strict
 from lgcw.models.config import RepoConfig, WorkflowConfig
@@ -32,6 +32,13 @@ class RunContext(Strict):
     clock: Clock
     log: RunLog
     workflow_login: str
+    tokens: TokenProvider | None = Field(default=None, exclude=True, repr=False)
+
+    def push_auth(self) -> PushAuth:
+        """Read a code-only credential immediately before a guarded push."""
+        if self.tokens is None:
+            raise RuntimeError("code-side token provider is missing")
+        return PushAuth(token=SecretStr(self.tokens.token()))
 
     @model_validator(mode="after")
     def consistent_target(self) -> Self:

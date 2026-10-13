@@ -541,3 +541,54 @@ our own code. Research references point into [research/](research/).
   questions expose only node/class. HTTP 429 is not automatically retried, consistent with D-028.
 - **Qualification:** compiled foundation tests prove routing/adoption inputs, not a complete live
   crash recovery or paid-agent workflow. T13 and T17 retain those acceptance obligations.
+
+
+## D-031 T13 bootstrap and command journals close pre-PR crash windows
+
+- **Decided:** 2026-10-13. Add typed intake (original snapshot/criteria), bootstrap intent/complete,
+  setup intent/result and command_done markers. Extend RunMarker with optional snapshot, criteria,
+  initial SHA, operation ID and authenticated owner answer. Extend AckMarker with optional command
+  snapshot and return step. Legacy fields remain accepted; unknown legacy state asks rather than
+  guessing. Acknowledgements are written once before continuation; the newest unfinished command
+  can resume, and command_done prevents replay. Retry allowances remain derived from acknowledgements, deduplicated by question sequence
+  as well as command ID (review carry-forward 6150762838).
+- **Initial commit/push:** persist bootstrap operation/base before making the empty [skip ci]
+  commit. Read its message/empty diff on re-entry to reuse it after a lost local response. Persist
+  the enriched run intent before push; exact remote SHA recovers push-before-receipt without a
+  second push. Add WorkspacePort.commit_message and GitHubPort.branch_head/get_pr_document.
+  The draft creation body carries the run marker in that same write; a recovered PR then receives
+  its append-only run/push/completion receipts once. Run body/comment copies dedupe as one fact.
+- **Setup:** journal before executing trusted commands and after the result. An interrupted intent
+  without a result asks; it never runs commands again automatically. An owner continuation gets
+  a new operation ID. Dirty setup output is preserved and asks instead of being silently committed.
+  Local bare-repo contracts use a recording port adapter and BaseException crash injection to
+  bypass normal node error recovery. fail_after's first subsequent call is 1, correcting T13's 0.
+- **Canonical input:** freeze the first valid issue snapshot before asking or preparing a clone.
+  Owner answers can supply missing criteria and remain separate authenticated instructions. The
+  enriched run fact retains this context on the PR. Oversized records ask for bounded scope;
+  never truncate canonical data. Structured marker values redact before serialization.
+- **Capabilities:** RunContext gains an excluded, non-repr optional TokenProvider; only code-side
+  push_auth reads it. No agent prompt receives the context/provider. Label repair checks observed
+  state, including a question/blocked marker written before a crash interrupted labels. Posted
+  local receipts dedupe by their actual GitHub IDs/body so recovery does not duplicate evidence.
+  The completion fact on the issue retains the PR number so closed PRs remain discoverable.
+- **Dependencies:** approved SDKs/stdlib only. Real adapters use official githubkit read endpoints;
+  live qualification is now unblocked by the owner (D-032) and remains pending execution. No merge/default-branch write added.
+
+
+- **Test correction evidence:** a new node-log assertion expected `end` to emit node_start, but
+  T12 registers its fixed terminator outside `_logged` in build_graph.py. The assertion now
+  requires exactly reconcile while waiting, excluding every writer/paid continuation. The
+  initial failing assertion was retained in the PR's Tested how evidence; no gate was relaxed.
+
+## D-032 Owner-authorized live target supersedes the original sandbox proposal
+
+- **Decided:** Alex, 2026-10-13, relayed by the reviewer in PR #1 comment 6150166861. Use
+  `bodegus/family-calendar` for the T5 adapter contract and T17 smoke. This supersedes D-014's
+  `oc2-publish-sandbox` proposal and D-022's alternate clean sandbox proposal.
+- **Authority and scope:** the owner accepts live-run risk on this repository. Use recognizable
+  issue/branch/draft-PR fixtures, close test artifacts and delete their branches; never merge or
+  push to main. The target's existing npm-audit failure is baseline evidence, not a green result.
+- **Login:** the reviewer reports the dedicated workflow Codex login is ready. Never read or
+  print its authentication file, or reuse the desktop login. T5/T10/T17 live results require actual
+  receipts before any box is ticked; this decision alone does not qualify them.

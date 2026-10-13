@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from lgcw.ledger.markers import parse_markers
-from lgcw.models.github import IssueComment, PrReview, ReviewThread
-from lgcw.models.ledger import LedgerEntry, PrLedger, ReviewMarker
+from lgcw.models.github import IssueComment, PrDocument, PrReview, ReviewThread
+from lgcw.models.ledger import LedgerEntry, PrLedger, ReviewMarker, RunMarker
 
 
 def build_ledger(
@@ -18,6 +18,7 @@ def build_ledger(
     workflow_login: str,
     *,
     reviews: Sequence[PrReview] = (),
+    pr_document: PrDocument | None = None,
 ) -> PrLedger:
     """Collect only workflow-authored marker facts and order them deterministically.
 
@@ -27,6 +28,17 @@ def build_ledger(
     """
     entries = _comment_entries(issue_comments, "issue", workflow_login)
     entries.extend(_comment_entries(pr_comments, "pr", workflow_login))
+    if pr_document is not None and pr_document.author == workflow_login:
+        for marker in parse_markers(pr_document.body):
+            if isinstance(marker, RunMarker) and marker.branch == pr_document.head_ref:
+                entries.append(
+                    LedgerEntry(
+                        comment_id=pr_document.number,
+                        created_at=pr_document.created_at,
+                        where="pr_body",
+                        marker=marker,
+                    )
+                )
     for review in reviews:
         if review.author != workflow_login:
             continue
@@ -59,7 +71,16 @@ def build_ledger(
                     )
                 )
     entries.sort(key=lambda entry: (entry.created_at, entry.comment_id))
-    return PrLedger(entries=tuple(entries))
+    unique: list[LedgerEntry] = []
+    runs: set[str] = set()
+    for entry in reversed(entries):
+        if isinstance(entry.marker, RunMarker):
+            key = entry.marker.model_dump_json()
+            if key in runs:
+                continue
+            runs.add(key)
+        unique.append(entry)
+    return PrLedger(entries=tuple(reversed(unique)))
 
 
 def _comment_entries(

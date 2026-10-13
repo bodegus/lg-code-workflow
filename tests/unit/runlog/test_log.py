@@ -140,8 +140,32 @@ def test_posted_body_and_ids_are_retained(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_recovered_posted_receipt_is_not_duplicated(tmp_path: Path) -> None:
+    log = RunLog(tmp_path)
+    first = log.posted("comment", "Canonical body", {"comment_id": 42})
+    second = log.posted("comment", "Canonical body", {"comment_id": 42})
+    assert first == second and len(list((tmp_path / "github").glob("*.md"))) == 1
+
+
+@pytest.mark.unit
 def test_nonfinite_json_is_rejected_without_writing_record(tmp_path: Path) -> None:
     log = RunLog(tmp_path)
     with pytest.raises(ValueError):
         log.event("invalid", seconds=float("nan"))
     assert not (tmp_path / "events.jsonl").exists()
+
+
+@pytest.mark.unit
+def test_posted_preserves_marker_after_semantic_header_redaction(tmp_path: Path) -> None:
+    from lgcw.ledger.markers import parse_markers, render_marker
+    from lgcw.models.ledger import BlockedMarker
+
+    marker = BlockedMarker(reason="Authorization: Basic b3BhcXVlLXNlY3JldA==")
+    path = RunLog(tmp_path).posted(
+        "blocked", "Stopped\n" + render_marker(marker), {"comment_id": 1}
+    )
+    content = path.read_text()
+    parsed = parse_markers(content)
+    assert len(parsed) == 1 and isinstance(parsed[0], BlockedMarker)
+    assert parsed[0].reason == "Authorization: [REDACTED]"
+    assert "b3BhcXVlLXNlY3JldA==" not in content

@@ -242,6 +242,12 @@ class GitWorkspace(WorkspacePort):
         """Return the clone's committed head, including a commit made before a crash."""
         return await self._checked(self._prepared().repo_dir, "rev-parse", "HEAD")
 
+    async def commit_message(self, sha: str) -> str:
+        """Read a committed message without hooks or external programs."""
+        return await self._checked(
+            self._prepared().repo_dir, "show", "-s", "--format=%B", _sha(sha)
+        )
+
     async def numstat(self, base_sha: str) -> str:
         """Return committed/index/worktree changes plus untracked file counts without staging."""
         cwd = self._prepared().repo_dir

@@ -20,6 +20,7 @@ from lgcw.live import require_live
 from lgcw.models.github import (
     IssueComment,
     JobView,
+    PrDocument,
     PrReview,
     PrSnapshot,
     ReviewCommentDraft,
@@ -300,6 +301,31 @@ class GitHubClient(GitHubPort):
             raise LookupError("Pull request not found")
         node["labels"]["nodes"] = labels
         return pr_from_graphql(node)
+
+    async def branch_head(self, repo: str, branch: str) -> str | None:
+        """Read a branch SHA; only a missing ref is translated to None."""
+        owner, name = repo.split("/", 1)
+        try:
+            response = await self._sdk().rest.git.async_get_ref(owner, name, f"heads/{branch}")
+        except RequestFailed as error:
+            if error.response.status_code == 404:
+                return None
+            raise
+        return response.parsed_data.object_.sha
+
+    async def get_pr_document(self, repo: str, number: int) -> PrDocument:
+        """Read the body and author as one SDK response for bootstrap recovery."""
+        owner, name = repo.split("/", 1)
+        response = await self._sdk().rest.pulls.async_get(owner, name, number)
+        raw = _rest_data(response.parsed_data)
+        return PrDocument(
+            number=raw["number"],
+            author=_author(raw.get("user")),
+            body=raw.get("body") or "",
+            created_at=raw["created_at"],
+            head_ref=raw["head"]["ref"],
+            head_sha=raw["head"]["sha"],
+        )
 
     async def create_draft_pr(
         self, repo: str, head: str, base: str, title: str, body: str

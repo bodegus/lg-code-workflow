@@ -68,6 +68,10 @@ class WorkspacePort(Protocol):
         """Read the local committed head for publish recovery without making another commit."""
         ...
 
+    async def commit_message(self, sha: str) -> str:
+        """Read an operation trailer for commit-before-receipt recovery."""
+        ...
+
     async def run_commands(
         self, cwd: Path, commands: Sequence[str], timeout_s: float, log_path: Path
     ) -> CommandResult:
