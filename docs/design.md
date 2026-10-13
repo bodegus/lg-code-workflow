@@ -142,10 +142,14 @@ Counters (fix rounds, reruns, review rounds) are recomputed from the ledger, nev
 ### 3.5 Why this is enough to survive crashes
 
 Each node checks for its own marker before acting and writes the marker as part of the same step,
-so rerunning `lgcw run` after a crash or kill continues where GitHub says the run is. The two
-non-atomic windows (push then marker; review post then marker) are closed by looking for the
-effect itself: the remote branch head, or a review whose body carries the round's marker. The
-builder's Codex thread id is in the `session` marker, so a rerun resumes the same thread.
+so rerunning `lgcw run` after a crash or kill continues where GitHub says the run is. The
+push-then-marker window is closed by checking the remote branch head. A submitted review whose
+response was lost is recovered through `list_pr_reviews`, including reviews with no inline
+findings; its body carries the round marker in the original submission (D-020). That marker can
+have a null review ID until GitHub assigns it; the enclosing review receipt provides the actual
+ID without a second event. The builder's Codex thread id is in the `session` marker, so a rerun
+resumes the same thread. These are integration requirements, not qualification of the currently
+implemented pure ledger; D-019 records the remaining pre-publication persistence gaps.
 
 ## 4. Steps
 
@@ -313,7 +317,7 @@ required, nullable where optional). Field lists are in the plan's Interfaces blo
 |---|---|---|
 | `WorkflowConfig`, `RepoConfig`, `Limits`, `RequiredCheck`, `RiskClass`, `ReviewThresholds` | `models/config.py` | configuration |
 | `IssueSnapshot`, `IntakeResult` | `models/issue.py` | intake |
-| `PrSnapshot`, `IssueComment`, `ReviewThread`, `ThreadComment`, `ReviewCommentDraft`, `RunView`, `JobView` | `models/github.py` | GitHub records |
+| `PrSnapshot`, `PrReview`, `IssueComment`, `ReviewThread`, `ThreadComment`, `ReviewCommentDraft`, `RunView`, `JobView` | `models/github.py` | GitHub records |
 | marker union (`RunMarker` … `BlockedMarker`), `LedgerEntry`, `PrLedger`, `Command` | `models/ledger.py` | the PR record |
 | `BuildHandoff`, `Decision`, `AcceptanceItem`, `FileNote`, `TestRun`, `Risk`, `Disposition` | `models/handoff.py` | builder output (strict) |
 | `ReviewVerdict`, `ReviewFinding`, `CodeLocation`, `LineRange`, `FindingCheck` | `models/review.py` | reviewer and verifier output (strict) |

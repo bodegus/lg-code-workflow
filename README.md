@@ -7,8 +7,8 @@ findings are review threads, and you steer a run by replying `/lgcw answer …`,
 `/lgcw abort` on the PR.
 
 **Status:** Phase 1 (local, on the owner's Mac), under construction. T0 toolchain, T1 models,
-T2 configuration and T3 ledger logic are implemented; adapters, graph nodes and the functional CLI
-are still to come.
+T2 configuration, T3 ledger logic and T4 GitHub port/renderers/fake are implemented. Live adapters,
+graph nodes and the functional CLI are still to come.
 No complete live execution has been qualified yet. See the checked tasks in the plan.
 
 | Read | For |

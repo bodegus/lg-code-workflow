@@ -230,3 +230,33 @@ our own code. Research references point into [research/](research/).
   100% current-package line coverage. PR proof includes the actual commands and output.
 - **Revisit when:** integration needs additional durable facts, or review-thread timestamp data
   is added to the binding GitHub record model.
+
+## D-020 T4 review receipts must be readable independently of inline threads
+
+- **Evidence:** design §3.5 closes a review-post crash window by reading the review whose body
+  carries the marker. The original T4 port could create a review and list inline threads, but
+  could not list submitted review bodies. A COMMENT review with zero inline findings creates
+  no thread that could carry the review-round fact. The failing T4 regression demonstrates the
+  missing `list_pr_reviews` capability. GitHub exposes reviews separately from issue comments:
+  [review listing](https://docs.github.com/en/rest/pulls/reviews#list-reviews-for-a-pull-request),
+  [issue comment listing](https://docs.github.com/en/rest/issues/comments#list-issue-comments).
+- **Decided:** 2026-10-13, T4 builder. Add `PrReview(id, author, body, head_sha, submitted_at)`
+  and `GitHubPort.list_pr_reviews(repo, number) -> list[PrReview]`, with matching fake and real
+  adapters. Keep native review records separate from conversation comments; reconciliation will
+  ingest their markers using their authoritative submission timestamps. T5's shared contract
+  checks review-body readback as well as inline threads.
+- **Atomic marker identity:** a marker placed inside a review body can use a null `review_id`
+  at submission, because GitHub assigns the ID afterward. Recovery uses the enclosing
+  `PrReview.id`; it must not post a second event merely to recover that identity. T16/T12 will
+  prove the post-before-return crash case. All existing binding fields remain supported.
+- **Rendering:** package template strings are immutable constants loaded once at import;
+  render functions perform no I/O. Untrusted text cannot introduce HTML comments, including a
+  forged workflow marker or handoff delimiter. Truncation preserves handoff boundaries and
+  code-produced status, with the whole PR body capped at 60,000 characters.
+- **Fake:** each port call is recorded; failure injection occurs after a successful operation's
+  effect and fires once. Run/job snapshots are scheduled by fake-clock offsets. The three
+  shared contract scenarios are unit-tested here and must run live in T5 before adapter claims.
+- **Dependency check:** the read operation belongs on the already-approved githubkit adapter;
+  rendering uses standard-library string.Template/importlib.resources. No added dependency.
+- **Revisit when:** GitHub changes review listing or the graph requires another durable fact;
+  do not claim crash qualification from this fake-only readiness work.

@@ -51,6 +51,16 @@ class ReviewThread(Strict):
     comments: tuple[ThreadComment, ...]
 
 
+class PrReview(Strict):
+    """A submitted review body, independent of any inline finding threads."""
+
+    id: int
+    author: str
+    body: str
+    head_sha: str
+    submitted_at: datetime
+
+
 class ReviewCommentDraft(Strict):
     """One inline comment to publish with a review."""
 
