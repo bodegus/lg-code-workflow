@@ -28,9 +28,9 @@ def _sha(value: str) -> str:
 
 
 def _instruction(path: str) -> bool:
-    parts = PurePosixPath(path).parts
+    parts = tuple(part.casefold() for part in PurePosixPath(path).parts)
     return any(part in {".agents", ".claude", ".codex"} for part in parts) or (
-        parts[-1] in {"AGENTS.md", "AGENTS.override.md", "CLAUDE.md"}
+        parts[-1] in {"agents.md", "agents.override.md", "claude.md"}
     )
 
 
@@ -52,6 +52,7 @@ class GitWorkspace(WorkspacePort):
         self._info: WorkspaceInfo | None = None
         self._repo: RepoConfig | None = None
         self._issue: IssueRef | None = None
+        self._configs: dict[Path, str] = {}
 
     def _prepared(self) -> WorkspaceInfo:
         if self._info is None:
@@ -87,6 +88,45 @@ class GitWorkspace(WorkspacePort):
                 raise ValueError("invalid workspace symlink") from None
             if not resolved.is_relative_to(cwd):
                 raise ValueError(f"workspace symlink escapes checkout: {path}")
+
+    async def _trusted_config(
+        self, cwd: Path, url: str, repo: RepoConfig, branch: str, *, mirror: bool = False
+    ) -> None:
+        """Reject config execution/transport knobs and any drift after preparation."""
+        directory = cwd if mirror else cwd / ".git"
+        if directory.is_symlink() or (directory / "config").is_symlink():
+            raise ValueError("unsafe local git config symlink")
+        raw = await self._checked(cwd, "config", "--local", "--no-includes", "--null", "--list")
+        allowed = {
+            "core.repositoryformatversion": {"0"},
+            "core.filemode": {"true", "false"},
+            "core.bare": {"true" if mirror else "false"},
+            "core.logallrefupdates": {"true"},
+            "core.ignorecase": {"true", "false"},
+            "core.precomposeunicode": {"true", "false"},
+            "remote.origin.url": {url},
+            "remote.origin.tagopt": {"--no-tags"},
+            "remote.origin.fetch": {
+                "+refs/*:refs/*" if mirror else "+refs/heads/*:refs/remotes/origin/*"
+            },
+            "remote.origin.mirror": {"true"} if mirror else set(),
+            f"branch.{branch}.remote": {"origin"},
+            f"branch.{branch}.merge": {f"refs/heads/{branch}", f"refs/heads/{repo.default_branch}"},
+            f"branch.{repo.default_branch}.remote": {"origin"},
+            f"branch.{repo.default_branch}.merge": {f"refs/heads/{repo.default_branch}"},
+        }
+        seen: set[str] = set()
+        for row in raw.split("\0"):
+            if not row:
+                continue
+            key, _, value = row.partition("\n")
+            if key in seen or value not in allowed.get(key, set()):
+                raise ValueError("local git origin/config contains an untrusted key or value")
+            seen.add(key)
+        snapshot = "\0".join(sorted(raw.split("\0")))
+        if cwd in self._configs and self._configs[cwd] != snapshot:
+            raise ValueError("local git config changed after preparation")
+        self._configs[cwd] = snapshot
 
     async def _default(self, cwd: Path, url: str, env: Mapping[str, str]) -> str:
         output = await self._checked(cwd, "ls-remote", "--symref", url, "HEAD", env=env)
@@ -127,9 +167,11 @@ class GitWorkspace(WorkspacePort):
         if mirror.exists():
             if await self._checked(mirror, "remote", "get-url", "origin") != url:
                 raise ValueError("mirror origin mismatch")
-            await self._checked(mirror, "remote", "update", "--prune", env=auth)
+            await self._trusted_config(mirror, url, repo, branch, mirror=True)
+            await self._checked(mirror, "fetch", "--prune", url, "+refs/*:refs/*", env=auth)
         else:
             await self._checked(self._home, "clone", "--mirror", "--", url, str(mirror), env=auth)
+        await self._trusted_config(mirror, url, repo, branch, mirror=True)
         base = await self._checked(
             mirror, "rev-parse", "--verify", f"refs/heads/{repo.default_branch}^{{commit}}"
         )
@@ -139,8 +181,14 @@ class GitWorkspace(WorkspacePort):
                 raise ValueError("clone origin mismatch")
             if await self._checked(checkout, "branch", "--show-current") != branch:
                 raise ValueError("clone branch mismatch")
-            await self._checked(checkout, "fetch", "--prune", "origin", env=auth)
-            resumed = True
+            await self._trusted_config(checkout, url, repo, branch)
+            await self._checked(
+                checkout, "fetch", "--prune", url, "+refs/heads/*:refs/remotes/origin/*", env=auth
+            )
+            remote = await git(
+                "show-ref", "--verify", f"refs/remotes/origin/{branch}", cwd=checkout
+            )
+            resumed = remote.code == 0
         else:
             await self._checked(
                 run_dir, "clone", "--local", "--no-checkout", "--", str(mirror), str(checkout)
@@ -152,6 +200,8 @@ class GitWorkspace(WorkspacePort):
             start = f"refs/remotes/origin/{branch if resumed else repo.default_branch}"
             await self._checked(checkout, "checkout", "-b", branch, start)
             await self._checked(checkout, "remote", "set-url", "origin", url)
+        await self._trusted_config(checkout, url, repo, branch)
+        base = await self._checked(checkout, "merge-base", _sha(base), "HEAD")
         await self._safe_links(checkout)
         self._repo, self._issue = repo, issue
         self._info = WorkspaceInfo(repo_dir=checkout, branch=branch, base_sha=base, resumed=resumed)
@@ -272,10 +322,17 @@ class GitWorkspace(WorkspacePort):
             if self._origin is not None
             else f"https://github.com/{self._repo.full_name}.git"
         )
-        if url != expected_url or await self._default(cwd, url, env) != self._repo.default_branch:
+        try:
+            await self._trusted_config(cwd, expected_url, self._repo, branch)
+        except ValueError as error:
+            raise PushRejectedError(f"remote identity/config unsafe: {error}") from error
+        if (
+            url != expected_url
+            or await self._default(cwd, expected_url, env) != self._repo.default_branch
+        ):
             raise PushRejectedError("remote identity or default branch changed")
         ref = f"refs/heads/{branch}"
-        observed = await self._checked(cwd, "ls-remote", "origin", ref, env=env)
+        observed = await self._checked(cwd, "ls-remote", expected_url, ref, env=env)
         remote_sha = observed.split()[0] if observed else None
         if remote_sha != expected_remote_sha:
             raise PushRejectedError("remote head differs from exact expected lease")
@@ -290,7 +347,7 @@ class GitWorkspace(WorkspacePort):
             result = await git(
                 "push",
                 f"--force-with-lease={ref}:{expected_remote_sha or ''}",
-                "origin",
+                expected_url,
                 f"HEAD:{ref}",
                 cwd=cwd,
                 env=env,
@@ -319,9 +376,13 @@ class GitWorkspace(WorkspacePort):
             raise ValueError("cannot adopt an unowned branch")
         if await self._checked(info.repo_dir, "status", "--porcelain", "--untracked-files=all"):
             raise ValueError("cannot adopt remote head with dirty local state")
-        await self._checked(
-            info.repo_dir, "fetch", "origin", f"refs/heads/{branch}", env=self._auth()
+        if self._repo is None:
+            raise RuntimeError("workspace target is missing")
+        url = (
+            str(self._origin) if self._origin else f"https://github.com/{self._repo.full_name}.git"
         )
+        await self._trusted_config(info.repo_dir, url, self._repo, branch)
+        await self._checked(info.repo_dir, "fetch", url, f"refs/heads/{branch}", env=self._auth())
         head = await self._checked(info.repo_dir, "rev-parse", "--verify", "FETCH_HEAD^{commit}")
         await self._checked(info.repo_dir, "reset", "--hard", head)
         return head
@@ -354,7 +415,7 @@ class GitWorkspace(WorkspacePort):
                     (
                         i + 1
                         for i, part in enumerate(parts)
-                        if part in {".agents", ".claude", ".codex"}
+                        if part.casefold() in {".agents", ".claude", ".codex"}
                     ),
                     len(parts),
                 )

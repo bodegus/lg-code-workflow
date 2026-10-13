@@ -260,3 +260,85 @@ async def test_timeout_kills_delayed_grandchild_write(tmp_path: Path) -> None:
     assert result.code == 124 and "spawned" in result.tail
     await asyncio.sleep(0.4)
     assert not (info.repo_dir / "delayed-child-write").exists()
+
+
+@pytest.mark.unit
+async def test_review_overlay_is_case_insensitive(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    (info.repo_dir / "sub").mkdir()
+    (info.repo_dir / "sub/agents.md").write_text("hostile instructions")
+    (info.repo_dir / ".Codex").mkdir()
+    (info.repo_dir / ".Codex/config.toml").write_text("hostile config")
+    head = await workspace.commit_all("case variants", {})
+    assert head is not None
+    checkout = await workspace.reviewer_checkout(head, remote.base)
+    assert not (checkout / "sub/agents.md").exists()
+    assert not (checkout / ".Codex").exists()
+    assert (checkout / "AGENTS.md").read_text() == "Trusted base instructions.\n"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "key", ["remote.origin.pushurl", "remote.origin.receivepack", "core.filemode", "include.path"]
+)
+async def test_authenticated_push_refuses_tampered_local_config(tmp_path: Path, key: str) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    await workspace.commit_empty("initial")
+    other = tmp_path / "other.git"
+    other.mkdir()
+    await checked(other, "init", "--bare", "--initial-branch=main")
+    leak = tmp_path / "leak"
+    value = {
+        "remote.origin.pushurl": str(other),
+        "remote.origin.receivepack": f"env > {leak}; git-receive-pack",
+        "core.filemode": "false",
+        "include.path": str(tmp_path / "missing-config"),
+    }[key]
+    if key == "core.filemode":
+        old = await checked(info.repo_dir, "config", "core.filemode")
+        value = "false" if old == "true" else "true"
+    await checked(info.repo_dir, "config", "--local", key, value)
+    with pytest.raises(PushRejectedError, match="config"):
+        await workspace.push(BRANCH, None, AUTH)
+    assert not leak.exists()
+    assert await checked(remote.bare, "for-each-ref", f"refs/heads/{BRANCH}") == ""
+    assert await checked(other, "for-each-ref", f"refs/heads/{BRANCH}") == ""
+
+
+@pytest.mark.unit
+async def test_resume_checks_config_before_fetch(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    home = tmp_path / "lgcw"
+    info = await GitWorkspace(home, origin=remote.bare).prepare(policy(), ISSUE, BRANCH)
+    await checked(info.repo_dir, "config", "remote.origin.uploadpack", "false")
+    with pytest.raises(ValueError, match="config"):
+        await GitWorkspace(home, origin=remote.bare).prepare(policy(), ISSUE, BRANCH)
+
+
+@pytest.mark.unit
+async def test_resume_base_ignores_later_main_changes(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    await workspace.prepare(policy(), ISSUE, BRANCH)
+    await workspace.commit_empty("initial")
+    await workspace.push(BRANCH, None, AUTH)
+    (remote.seed / ".github/workflows").mkdir(parents=True)
+    (remote.seed / ".github/workflows/ci.yml").write_text("owner adds CI")
+    await checked(remote.seed, "add", "-A")
+    await checked(remote.seed, "commit", "-m", "later main work")
+    await checked(remote.seed, "push", "origin", "main")
+    resumed = await workspace.prepare(policy(), ISSUE, BRANCH)
+    assert resumed.resumed and resumed.base_sha == remote.base
+    assert ".github/workflows/ci.yml" not in await workspace.changed_paths(resumed.base_sha)
+
+
+@pytest.mark.unit
+async def test_local_clone_without_remote_branch_is_not_resumed(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    await workspace.prepare(policy(), ISSUE, BRANCH)
+    assert not (await workspace.prepare(policy(), ISSUE, BRANCH)).resumed
