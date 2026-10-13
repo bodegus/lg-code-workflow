@@ -402,3 +402,32 @@ our own code. Research references point into [research/](research/).
   The diff still uses committed base/head, so reviewers can inspect the instruction change.
 - **Revisit when:** parallel runs need cross-process mirror locking, or another git host is added.
   Phase 1 runs one workflow process at a time; mirror/clone state is a cache, never progress state.
+
+## D-026 T9 self-contained fenced prompts and exact packaged skills
+
+- **Decided:** 2026-10-13. Renderers return a self-contained TurnInput.text: fixed trusted template,
+  a JSON data block fenced with more backticks than any run in the data, and an optional separately
+  labelled authenticated owner instruction. Set data/data_label to None to prevent duplicate
+  transmission. The harness may still accept raw data from other callers and must fence it once.
+  Fence labels are validated constants, never an avenue for introducing another instruction.
+- **Review boundary:** ReviewPacket rejects extra fields and has no builder summary, acceptance
+  self-grades or test claims. It contains approach/decisions/risks and evidence pointers, while
+  gate and CI summaries are code-produced. Packet construction in T16 must preserve this boundary.
+  All packet content remains data; only the fixed review template/skill defines the task.
+  Before implementation, corrected the new review test's oracle to inspect excluded JSON fields:
+  banning the literal word tests would contradict the required tests lens. The structural
+  assertion rejects summary/status/tests/acceptance keys while preserving the exact lens value.
+- **Skills:** resolve only the six allowed names to absolute paths under the installed package;
+  never use a target repo's same-named skill. Keep each skill below 5,000 bytes with YAML name and
+  description. Apply skill-creator's guidance to keep roles focused on their own output, not
+  sequencing/reruns or remote writes. Validate frontmatter and wheel contents locally; actual
+  skill-reference SDK behavior remains T10's live spike, not proven by resource tests.
+  Actual wheel inspection first found only five skills: the unanchored build/ ignore also
+  excluded skills/build/SKILL.md. A git check-ignore regression failed before anchoring /build/
+  to the repository root. Preserve the build-artifact exclusion while shipping the required skill.
+- **Fake:** script typed results or exceptions by role, retain separate sessions/turns, validate
+  against the requested output model and expose measured usage as a configurable fixture. Unknown
+  sessions, wrong schemas and exhausted scripts fail explicitly instead of synthesizing success.
+  No token, network, agent process or LLM is used by these contracts.
+- **Dependencies:** reuse Pydantic and stdlib json/re/importlib resources/collections; no library
+  or SDK implementation added. T10 supplies the real adapter after its required live spike.
