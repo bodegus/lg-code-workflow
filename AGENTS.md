@@ -63,8 +63,8 @@ PR** that adds the dependency or the code, using the `choosing-dependencies` ski
 standard library over a new package when it does the job (`argparse`, `tomllib`, `json`, `fnmatch`,
 `pathlib`, `asyncio.subprocess`).
 
-Runtime dependencies approved so far: `langgraph`, `openai-codex`, `githubkit`, `pydantic` (via
-langgraph). The dev stack is fixed (below) and is not subject to this rule.
+Runtime dependencies approved so far: `langgraph`, `openai-codex`, its pinned official
+`openai-codex-cli-bin` runtime (D-034), `githubkit`, `pydantic` (via langgraph). The dev stack is fixed (below) and is not subject to this rule.
 
 ## Python stack and conventions
 

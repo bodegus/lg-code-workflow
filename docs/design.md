@@ -251,8 +251,12 @@ Step details:
 | reviewer | `read_only` on a separate checkout | off | `deny_all` | per level (§7) | fresh per lens per round |
 | verifier | `read_only` | off | `deny_all` | low | fresh per finding |
 
-  `approval_mode` and `sandbox` are set explicitly on every turn: they are sticky across turns and
-  the SDK's default `auto_review` would let another agent approve escalations.
+  `approval_mode=deny_all` is explicit on every start/resume/turn. The complete role sandbox and
+  network policy is set at thread_start for a fresh first turn and thread_resume immediately
+  before each later turn. Cached threads retain their immutable role policy; the first resume
+  in a new server applies it. SDK 0.162.1's turn-level workspace_write preset resets network=false;
+  omit that preset after explicitly configuring the thread (D-034). Never inherit old settings
+  across a server restart or use the SDK's default auto_review.
 - **Step skills** ship inside the package (`src/lgcw/skills/{build,fix,review,review-security,
   review-tests,verify-finding}/SKILL.md`) and are invoked by exact path, so a same-named skill in
   the target repo cannot shadow them. They describe how to do one step well; they never sequence
@@ -265,9 +269,14 @@ Step details:
   that fails validation gets one retry turn ("your answer did not match the schema"), then `ask`.
 - **Limits:** Codex has no turn cap, so each agent node has a LangGraph `TimeoutPolicy`
   (`run_timeout`, `idle_timeout` refreshed by a heartbeat on every Codex event) and the harness
-  interrupts the turn on cancel. Defaults: build 3,600 s run / 600 s idle; review 1,200 s / 300 s;
+  interrupts the turn on cancel and closes its verified owned process tree, because SDK
+  interrupt alone can leave a shell running (D-034 R1). Reparented children and rapid fork
+  chains can escape the bounded ancestry inventory; workspace quiescence is not guaranteed.
+  T14 must re-verify actual content after cancellation before gate/commit and bind the committed
+  candidate to its measured gate before push (D-034 R2). Defaults: build 3,600 s run / 600 s idle; review 1,200 s / 300 s;
   verify 300 s / 120 s.
-- **Errors:** login problems → `ask` ("re-login"); quota or rate limit → `ask` with the reset time;
+- **Errors:** login problems → `ask` ("re-login"); quota or rate limit → `ask` with the reset time
+  when available, otherwise explicitly report reset time unavailable (D-034 R1 deferral);
   timeout → `ask`. Usage per turn (input, cached input, output, reasoning tokens, context window)
   goes to the run log.
 
@@ -281,8 +290,8 @@ Step details:
      file:lines, title, required disposition) and the latest failure. Compaction on a ChatGPT login
      keeps only user messages, so nothing may depend on the thread remembering.
   2. **Fresh builder rule** (code): start a new builder thread seeded with a consolidated prompt
-     (issue, criteria, latest handoff, open findings, latest failure) when (a) the thread's input
-     tokens exceed `context_restart_ratio` (default 0.6) of its context window before a fix round,
+     (issue, criteria, latest handoff, open findings, latest failure) when (a) the latest context input tokens (`Usage.context_input_tokens`, not summed billing)
+     exceed `context_restart_ratio` (default 0.6) of its context window before a fix round,
      or (b) the same failure fingerprint repeats after a fix, or (c) the thread cannot be resumed.
      Only once per cause; the next repeat goes to `ask`.
 - **Handoff:** the builder returns `BuildHandoff` every turn; code renders it into the PR body and

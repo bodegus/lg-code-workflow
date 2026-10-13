@@ -625,3 +625,140 @@ our own code. Research references point into [research/](research/).
 - **Live follow-up:** the reviewer explicitly allowed the persistent T5 fixture/plan follow-up in
   this PR. It now uses the owner-approved family-calendar target and recognizable branch prefix;
   its named command also checks branch/body reads and any-state discovery after fixture closure.
+
+## D-034 T10 official SDK runtime isolation, policy and measured usage
+
+- **Plugin check (step 1):** D-002 and research §5 reject the private/experimental LangChain
+  ChatGPT-login bridge. LangGraph supplies control, timeouts and heartbeats, not a typed Codex
+  app-server session/skill/output-schema implementation. Its graph stays outside paid calls.
+- **SDK check (step 2):** official openai-codex 0.162.1 (Apache-2.0) provides AsyncCodex,
+  SkillInput, schema-bearing turns, streaming, resume and interrupt. Use its public APIs only.
+  Its pinned openai-codex-cli-bin 0.162.1 dependency (same upstream) publicly exports
+  bundled_codex_path/bundled_path_dir. Declare that existing transitive package directly because
+  the launcher now imports those helpers; no new package version is introduced. A two-function
+  checked stub describes the upstream helpers, which lack py.typed; no type-check suppression.
+- **Environment:** CodexConfig.env merges inherited keys. Public launch_args_override with
+  /usr/bin/env -i replaces the actual Rust process environment with exactly PATH, HOME, LANG,
+  CODEX_HOME. Preserve the runtime's public helper PATH directory. Free real-PID inspection
+  confirmed the exact four keys with inherited synthetic token variables excluded. Thin stdlib
+  fcntl lock prevents two workflow-owned servers on the dedicated home; SDK close releases it.
+- **Policy:** deny_all is sent on every start/resume/turn. The high-level turn workspace_write
+  preset creates a new policy with network=false, losing D-012's builder networking. Therefore
+  start the fresh first turn with an explicitly configured thread, or explicitly thread_resume
+  immediately before every subsequent turn with its role sandbox/network, then omit the resetting
+  turn preset. Returned resumed effective policy was workspaceWrite/network=true/approval=never.
+  Reviewer/verifier always use read_only/network=false. Reject role/spec mismatches.
+  This refines design §5's “set on every turn”: complete thread policy immediately before the
+  turn, rather than the SDK preset that changes its meaning. No full-access or auto_review path.
+- **Recovery:** cache the fresh thread handle only until first dispatch; thread_start alone has
+  no resumable rollout. Cross-process resume after a completed turn works; an unmaterialized
+  session maps to HarnessSessionLostError. Refuse to dispatch into an observed in-progress turn.
+  T14 must reconcile an interrupted/unknown paid dispatch before selecting a fresh builder.
+- **Cancellation:** shield the turn/start reply so a cancellation between dispatch and handle
+  receipt can still interrupt that exact handle. If the reply/interrupt fails, close the owned
+  server without redispatching. A delayed-reply fake-SDK regression failed before this fix.
+- **Output/accounting:** one schema-correction turn at most, no auth/quota/transport retry. Public
+  typed notifications supply heartbeat, completion, final answer and measured cumulative counters.
+  Own-session rollout supplies the pre-turn cumulative baseline, including across server restart.
+  Usage input/cached/output/reasoning are deltas; new nullable context_input_tokens is the latest
+  model-request input for the T14 context threshold, distinct from summed billing. Never estimate
+  a missing usage value. A resumed thread without its own accounting baseline never dispatches.
+  RunLog.next_turn_seq derives the next evidence filename from all retained
+  role artifacts across restarts (R2-X3 carry-forward), and turn() still refuses overwrites.
+- **Evidence:** docs/spikes/2026-10-13-codex-{environment,policy,paid}.md; four tiny spike turns,
+  named live-smoke runs (four turns each, including the final dispatch-cancellation hardening).
+  Real agent tools denied .git/config and read-only workspace writes;
+  an active shell command was interrupted on cancellation. The bare command/exec RPC's weaker
+  .git behavior is irrelevant to this adapter because it never uses that RPC.
+- **Limits:** cancellation/invalid-output failures still carry unknown usage at the existing
+  error boundary; raw own-session rollouts retain evidence. Quota/auth are covered through the
+  public SDK fake rather than spending/revoking a login. This decision does not qualify T14–T17.
+- **Revisit when:** SDK gains an explicit network-bearing turn sandbox, an environment-replacement
+  option or typed runtime helpers; or Phase 1 evidence contradicts the measured policy/accounting.
+
+- **T14 integration correction:** an observed in-progress resumed turn raises HarnessError,
+  not HarnessSessionLostError. “Lost” permits the bounded fresh-builder rule; an active turn
+  instead requires reconciliation, so another builder cannot race its workspace. A fake-SDK
+  regression failed before this classification fix and proves zero additional dispatches.
+
+### D-034 R1 qualification refinements (PR #3 review 6154582337)
+
+- **Launcher/roles:** capture the actual CodexConfig in unit tests, execute both its minimal
+  prefix and complete trusted launcher with env replacing the binary, and inspect the real
+  Rust PID's environment in a free probe. All show exactly PATH/HOME/LANG/CODEX_HOME. Dropping
+  -i, reverting to SDK env-merging, or dropping analytics each fails an assertion. Read-only
+  reviewer/verifier and workspace-write builder policy are table tested on start and resume;
+  mutations making all roles writable or networked each fail. Mismatched specs fail before start.
+- **Repository instructions:** remove project_doc_max_bytes=0 from startup and thread config.
+  The builder reads its target AGENTS.md and reviewer/verifier read the trusted base overlay
+  prepared under D-025. The revised live first turn answers a value present only in AGENTS.md,
+  with tools forbidden in that prompt; this proves loading rather than a prompt echo. Earlier
+  max-bytes-zero spike transcripts remain historical, superseded by this correction.
+- **Lifecycle:** keep a fresh handle until turn/start returns, classify missing accounting as
+  HarnessSessionLostError, clear prior attempt handles before a retry resume, and classify an
+  in-progress turn as HarnessError (not lost). Interrupt RPCs are bounded at one second; SDK
+  shutdown and the home-lock release run even after an interrupt or initialization/close error.
+- **Physical cancellation:** the stronger live test refuted SDK interrupt as shell cleanup:
+  terminal status was interrupted but `sleep 2; printf ... > delayed.txt` still completed. The
+  public SDK has no runtime process-tree shutdown hook; LangGraph cancellation alone cannot
+  implement it. A thin stdlib/POSIX boundary now uses a unique, code-owned PID receipt from the
+  trusted launcher, verifies its direct-parent ancestry, freezes its descendant tree and kills
+  those processes (including children with separate process groups) before SDK close. No private
+  SDK process attributes or new dependency. Cancellation closes that owned runtime; the next
+  invocation creates a new server and resumes durable sessions. PID/parent inspection reads no
+  command lines or environments. Tests refuse self/foreign-parent PID receipts. Startup failure
+  also cleans up and releases the lock even when SDK close fails.
+- **Live proof:** same-call-ID custom-tool receipts from the own-session rollout prove the
+  read-only command actually ran and exited 1 with a permission denial. Thread.read omits these
+  custom tool items, so its empty item list was an invalid evidence assumption. Cancellation is
+  checked after the sleep deadline, with persisted interrupted status read on a new server and
+  actual server PID disappearance. The strong delayed-file assertion passes after physical
+  cleanup; it was not weakened. Earlier immediate-absence checks did not qualify physical cleanup.
+- **Structured errors:** prefer CodexErrorInfoValue over incidental prose before keyword
+  fallback. Fake modes cover failed/interrupted turns, missing usage, resume failure, role
+  mismatch, active-turn refusal, wedged/failed interrupts and shutdown failures.
+- **Quota reset-time deferral (R1-F5, reviewer explicitly permits a recorded deferral):**
+  HarnessQuotaError.resets_at remains None. SDK 0.162.1 exposes RateLimitSnapshot and a low-level
+  account/rateLimits/read RPC, but AsyncCodex has no public rate-limit read/subscription and its
+  routed turn stream does not expose the global account stream. We preserve the public facade
+  and single owned server rather than using private client attributes or a concurrent server.
+  T14 must ask with an explicit “reset time unavailable; check the dedicated login's usage” when
+  None, rather than promise a reset time. No live quota exhaustion or reset-time qualification
+  is claimed. Wire the public rate-limit boundary in a follow-up, or when the facade exposes it.
+- **Cached policy limit (R1-F10):** a free probe changing network false→true on the same cached
+  thread returned false both times, refuting in-process reconfiguration. Separate new servers
+  resumed that materialized probe thread with false and then true, each applying the requested
+  value. Roles are immutable within a harness; start/first cross-process resume selects their
+  policy, subsequent resumes send the same policy, and each turn sends deny_all. No claim that
+  a cached thread can change roles or networking. The turn preset remains omitted to preserve
+  the selected builder network policy.
+
+### D-034 R2 error boundaries and cleanup scope (review 6155287748)
+
+- **Control flow:** redacted cleanup diagnostics use an instance logger. Process/SDK shutdown
+  errors are collected into HarnessError for close(), while cancellation preserves its original
+  CancelledError and startup preserves its original authentication/startup exception. SDK close
+  and the home-lock release still run. Fake cleanup-port failures and SDK-close failures prove
+  the original exception type, task.cancelled(), token-safe logs and replacement-lock admission.
+- **HTTP classification:** specific unauthorized/usage-limit/rate-limit codes keep precedence;
+  typed nested httpStatusCode 401/429 maps to Auth/Quota, then generic codes fall back to the
+  keyword mapper. The optional R1 generic-code fixture had incorrectly required plain
+  HarnessError despite authentication prose; R2 explicitly requires fallback. Its expected
+  class is now the more specific HarnessAuthError. No assertion, skip or deadline was loosened.
+- **Termination proof:** local real-process tests poll os.kill(child_pid, 0) until
+  ProcessLookupError, under a fixed three-second bound, in addition to checking delayed writes.
+  Removing descendant SIGKILL now fails both the normal-inventory and inventory-failure cases;
+  SIGSTOP alone no longer passes. Fixture teardown still cleans up the deliberately stranded child.
+- **Scope/obligation (R2-F4):** ownership covers the direct child runtime and descendants still
+  reachable in the kernel pid/ppid inventory. An already reparented child (nohup/double fork or
+  a parent that exited) and a fork chain faster than the three passes can escape. Cleanup does
+  not guarantee workspace quiescence. T14 must re-verify actual diff/content after a cancelled
+  builder before gate or commit; a cancelled/unknown dispatch must not reuse a stale handoff.
+  It must also bind the committed candidate to measured gate content before pushing. These are
+  required integration obligations, not a stronger isolation claim for T10.
+- **Optional PID hardening (R2-F5):** a previously stopped process failing the ownership
+  re-check receives SIGCONT rather than staying stopped. A fake-inventory/real-child regression
+  proves restoration. Already absent root PIDs are skipped. Start-time identity is deferred:
+  current authority remains PID plus direct-parent/descendant ancestry, with the review's
+  acknowledged millisecond PID-reuse caveat. No claim of protection against that race or of
+  containment for reparented daemons; later container/cgroup isolation remains the stronger path.

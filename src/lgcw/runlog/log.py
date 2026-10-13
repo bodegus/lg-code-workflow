@@ -145,6 +145,20 @@ class RunLog:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write(content)
 
+    def next_turn_seq(self) -> int:
+        """Allocate after every retained turn artifact across roles and process restarts.
+
+        This selects an evidence filename, not a workflow routing counter. The caller owns
+        the per-issue execution lock; turn() still refuses any existing sequence.
+        """
+        folder = self._target("turns/.sequence").parent
+        sequences = [
+            int(match.group(1))
+            for path in folder.glob("*.json")
+            if (match := re.fullmatch(r"(\d+)-(builder|reviewer|verifier)\.json", path.name))
+        ]
+        return max(sequences, default=0) + 1
+
     def turn(
         self,
         seq: int,
