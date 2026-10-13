@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+from openai_codex.generated.v2_all import CodexErrorInfoValue, TurnError
 from pydantic import Field, ValidationError
 
 from lgcw.harness.errors import (
@@ -101,3 +102,18 @@ def map_error(error: Exception) -> HarnessError:
     elif "output schema" in lowered or "output_schema" in lowered:
         kind = HarnessOutputError
     return kind(message or type(error).__name__)
+
+
+def map_turn_error(error: TurnError) -> HarnessError:
+    """Prefer the SDK's typed error code over incidental words in server prose."""
+    info = error.codex_error_info
+    if info is None:
+        return map_error(RuntimeError(error.message))
+    if info.root == CodexErrorInfoValue.unauthorized:
+        return HarnessAuthError(error.message)
+    if info.root in (
+        CodexErrorInfoValue.usage_limit_exceeded,
+        CodexErrorInfoValue.rate_limit_exceeded,
+    ):
+        return HarnessQuotaError(error.message)
+    return HarnessError(error.message)

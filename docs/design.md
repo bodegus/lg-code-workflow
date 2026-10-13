@@ -253,7 +253,8 @@ Step details:
 
   `approval_mode=deny_all` is explicit on every start/resume/turn. The complete role sandbox and
   network policy is set at thread_start for a fresh first turn and thread_resume immediately
-  before each later turn. SDK 0.162.1's turn-level workspace_write preset resets network=false;
+  before each later turn. Cached threads retain their immutable role policy; the first resume
+  in a new server applies it. SDK 0.162.1's turn-level workspace_write preset resets network=false;
   omit that preset after explicitly configuring the thread (D-034). Never inherit old settings
   across a server restart or use the SDK's default auto_review.
 - **Step skills** ship inside the package (`src/lgcw/skills/{build,fix,review,review-security,
@@ -268,9 +269,11 @@ Step details:
   that fails validation gets one retry turn ("your answer did not match the schema"), then `ask`.
 - **Limits:** Codex has no turn cap, so each agent node has a LangGraph `TimeoutPolicy`
   (`run_timeout`, `idle_timeout` refreshed by a heartbeat on every Codex event) and the harness
-  interrupts the turn on cancel. Defaults: build 3,600 s run / 600 s idle; review 1,200 s / 300 s;
+  interrupts the turn on cancel and closes its verified owned process tree, because SDK
+  interrupt alone can leave a shell running (D-034 R1). Defaults: build 3,600 s run / 600 s idle; review 1,200 s / 300 s;
   verify 300 s / 120 s.
-- **Errors:** login problems → `ask` ("re-login"); quota or rate limit → `ask` with the reset time;
+- **Errors:** login problems → `ask` ("re-login"); quota or rate limit → `ask` with the reset time
+  when available, otherwise explicitly report reset time unavailable (D-034 R1 deferral);
   timeout → `ask`. Usage per turn (input, cached input, output, reasoning tokens, context window)
   goes to the run log.
 

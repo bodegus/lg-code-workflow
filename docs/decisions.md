@@ -675,3 +675,60 @@ our own code. Research references point into [research/](research/).
   public SDK fake rather than spending/revoking a login. This decision does not qualify T14–T17.
 - **Revisit when:** SDK gains an explicit network-bearing turn sandbox, an environment-replacement
   option or typed runtime helpers; or Phase 1 evidence contradicts the measured policy/accounting.
+
+- **T14 integration correction:** an observed in-progress resumed turn raises HarnessError,
+  not HarnessSessionLostError. “Lost” permits the bounded fresh-builder rule; an active turn
+  instead requires reconciliation, so another builder cannot race its workspace. A fake-SDK
+  regression failed before this classification fix and proves zero additional dispatches.
+
+### D-034 R1 qualification refinements (PR #3 review 6154582337)
+
+- **Launcher/roles:** capture the actual CodexConfig in unit tests, execute both its minimal
+  prefix and complete trusted launcher with env replacing the binary, and inspect the real
+  Rust PID's environment in a free probe. All show exactly PATH/HOME/LANG/CODEX_HOME. Dropping
+  -i, reverting to SDK env-merging, or dropping analytics each fails an assertion. Read-only
+  reviewer/verifier and workspace-write builder policy are table tested on start and resume;
+  mutations making all roles writable or networked each fail. Mismatched specs fail before start.
+- **Repository instructions:** remove project_doc_max_bytes=0 from startup and thread config.
+  The builder reads its target AGENTS.md and reviewer/verifier read the trusted base overlay
+  prepared under D-025. The revised live first turn answers a value present only in AGENTS.md,
+  with tools forbidden in that prompt; this proves loading rather than a prompt echo. Earlier
+  max-bytes-zero spike transcripts remain historical, superseded by this correction.
+- **Lifecycle:** keep a fresh handle until turn/start returns, classify missing accounting as
+  HarnessSessionLostError, clear prior attempt handles before a retry resume, and classify an
+  in-progress turn as HarnessError (not lost). Interrupt RPCs are bounded at one second; SDK
+  shutdown and the home-lock release run even after an interrupt or initialization/close error.
+- **Physical cancellation:** the stronger live test refuted SDK interrupt as shell cleanup:
+  terminal status was interrupted but `sleep 2; printf ... > delayed.txt` still completed. The
+  public SDK has no runtime process-tree shutdown hook; LangGraph cancellation alone cannot
+  implement it. A thin stdlib/POSIX boundary now uses a unique, code-owned PID receipt from the
+  trusted launcher, verifies its direct-parent ancestry, freezes its descendant tree and kills
+  those processes (including children with separate process groups) before SDK close. No private
+  SDK process attributes or new dependency. Cancellation closes that owned runtime; the next
+  invocation creates a new server and resumes durable sessions. PID/parent inspection reads no
+  command lines or environments. Tests refuse self/foreign-parent PID receipts. Startup failure
+  also cleans up and releases the lock even when SDK close fails.
+- **Live proof:** same-call-ID custom-tool receipts from the own-session rollout prove the
+  read-only command actually ran and exited 1 with a permission denial. Thread.read omits these
+  custom tool items, so its empty item list was an invalid evidence assumption. Cancellation is
+  checked after the sleep deadline, with persisted interrupted status read on a new server and
+  actual server PID disappearance. The strong delayed-file assertion passes after physical
+  cleanup; it was not weakened. Earlier immediate-absence checks did not qualify physical cleanup.
+- **Structured errors:** prefer CodexErrorInfoValue over incidental prose before keyword
+  fallback. Fake modes cover failed/interrupted turns, missing usage, resume failure, role
+  mismatch, active-turn refusal, wedged/failed interrupts and shutdown failures.
+- **Quota reset-time deferral (R1-F5, reviewer explicitly permits a recorded deferral):**
+  HarnessQuotaError.resets_at remains None. SDK 0.162.1 exposes RateLimitSnapshot and a low-level
+  account/rateLimits/read RPC, but AsyncCodex has no public rate-limit read/subscription and its
+  routed turn stream does not expose the global account stream. We preserve the public facade
+  and single owned server rather than using private client attributes or a concurrent server.
+  T14 must ask with an explicit “reset time unavailable; check the dedicated login's usage” when
+  None, rather than promise a reset time. No live quota exhaustion or reset-time qualification
+  is claimed. Wire the public rate-limit boundary in a follow-up, or when the facade exposes it.
+- **Cached policy limit (R1-F10):** a free probe changing network false→true on the same cached
+  thread returned false both times, refuting in-process reconfiguration. Separate new servers
+  resumed that materialized probe thread with false and then true, each applying the requested
+  value. Roles are immutable within a harness; start/first cross-process resume selects their
+  policy, subsequent resumes send the same policy, and each turn sends deny_all. No claim that
+  a cached thread can change roles or networking. The turn preset remains omitted to preserve
+  the selected builder network policy.

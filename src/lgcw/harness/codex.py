@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import IO
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from codex_cli_bin import bundled_codex_path, bundled_path_dir
 from openai_codex import (
@@ -37,8 +37,9 @@ from pydantic import BaseModel, ValidationError
 
 from lgcw.harness.env import build_codex_env
 from lgcw.harness.errors import HarnessError, HarnessOutputError, HarnessSessionLostError
+from lgcw.harness.process import terminate_runtime
 from lgcw.harness.prompts import fence
-from lgcw.harness.records import TokenCounts, map_error, read_counts, turn_usage
+from lgcw.harness.records import TokenCounts, map_error, map_turn_error, read_counts, turn_usage
 from lgcw.live import require_live
 from lgcw.models.base import strict_json_schema
 from lgcw.models.config import WorkflowConfig
@@ -69,7 +70,6 @@ def _sandbox(role: str) -> Sandbox:
 def _policy(role: str) -> JsonObject:
     return {
         "sandbox_workspace_write.network_access": role == "builder",
-        "project_doc_max_bytes": 0,
         "analytics.enabled": False,
         "otel.metrics_exporter": "none",
     }
@@ -92,17 +92,23 @@ class CodexHarness:
         path_dir = bundled_path_dir()
         if path_dir is not None:
             env["PATH"] = str(path_dir) + os.pathsep + env["PATH"]
+        self._runtime_pid = config.codex_home / f"lgcw-runtime-{uuid4()}.pid"
+        script = 'umask 077; printf "%s" "$$" > "$1"; shift; exec /usr/bin/env -i "$@"'
         args = (
             "/usr/bin/env",
             "-i",
+            *(f"{key}={value}" for key, value in env.items()),
+            "/bin/sh",
+            "-c",
+            script,
+            "lgcw-runtime",
+            str(self._runtime_pid),
             *(f"{key}={value}" for key, value in env.items()),
             str(bundled_codex_path()),
             "-c",
             "analytics.enabled=false",
             "-c",
             'otel.metrics_exporter="none"',
-            "-c",
-            "project_doc_max_bytes=0",
             "app-server",
             "--listen",
             "stdio://",
@@ -134,9 +140,14 @@ class CodexHarness:
                 await self._codex.__aenter__()
                 self._started = True
             except BaseException:
-                await self._codex.close()
-                lock.close()
-                self._lock = None
+                try:
+                    try:
+                        await terminate_runtime(self._runtime_pid)
+                    finally:
+                        await self._codex.close()
+                finally:
+                    lock.close()
+                    self._lock = None
                 raise
 
     async def start_session(self, spec: SessionSpec) -> SessionRef:
@@ -164,11 +175,12 @@ class CodexHarness:
         spec = self._specs.get(session.session_id)
         if spec is not None and session.role != spec.role:
             raise HarnessSessionLostError("session role does not match the started thread")
-        fresh = self._fresh.pop(session.session_id, None)
+        fresh = self._fresh.get(session.session_id)
         if fresh is not None and spec is not None:
             return fresh, spec
-        # Reassert sandbox AND network immediately before every resumed turn. Passing the
-        # SDK's turn-level workspace_write preset would reset network access to False.
+        # Supply the immutable role policy on first resume in a new server. Cached resumes
+        # keep their original policy; the spec above rejects role changes. A turn-level
+        # workspace_write preset would reset builder network access to False.
         thread = await self._codex.thread_resume(
             session.session_id,
             sandbox=_sandbox(session.role),
@@ -179,9 +191,7 @@ class CodexHarness:
         )
         saved = await thread.read(include_turns=True)
         if any(turn.status.value == "inProgress" for turn in saved.thread.turns):
-            raise HarnessSessionLostError(
-                "session has an unfinished turn; reconcile before dispatch"
-            )
+            raise HarnessError("session has an unfinished turn; reconcile before dispatch")
         if spec is None:
             effort = (
                 self._config.builder_effort
@@ -230,7 +240,7 @@ class CodexHarness:
         if completed.turn.status.value != "completed":
             error = completed.turn.error
             if error is not None:
-                raise map_error(RuntimeError(f"{error.codex_error_info}: {error.message}"))
+                raise map_turn_error(error)
             raise HarnessError(f"turn ended with status {completed.turn.status.value}")
         if usage is None:
             raise HarnessError("completed turn has no measured usage")
@@ -255,6 +265,7 @@ class CodexHarness:
         self._active[session.session_id] = None
         started = time.monotonic()
         handle: AsyncTurnHandle | None = None
+        thread: AsyncThread | None = None
         dispatch: asyncio.Task[AsyncTurnHandle] | None = None
         try:
             baseline = rollout_path(self._config.codex_home, session.session_id)
@@ -264,9 +275,14 @@ class CodexHarness:
             if turn.data is not None:
                 text += "\n\n" + fence(turn.data, turn.data_label or "external-data")
             for attempt in range(2):
+                handle = None
+                dispatch = None
+                self._active[session.session_id] = None
                 thread, spec = await self._thread(session)
                 if baseline is None and not fresh:
-                    raise HarnessError("resumed session has no durable token accounting baseline")
+                    raise HarnessSessionLostError(
+                        "resumed session has no durable token accounting baseline"
+                    )
                 inputs: Input = [
                     SkillInput(name=Path(turn.skill).parent.name, path=turn.skill),
                     TextInput(
@@ -291,6 +307,7 @@ class CodexHarness:
                     )
                 )
                 handle = await asyncio.shield(dispatch)
+                self._fresh.pop(session.session_id, None)
                 self._active[session.session_id] = handle
                 try:
                     answer, tokens = await self._collect(handle, heartbeat)
@@ -326,13 +343,28 @@ class CodexHarness:
                 if handle is None and dispatch is not None:
                     handle = await asyncio.wait_for(asyncio.shield(dispatch), timeout=10)
                 if handle is not None:
-                    await asyncio.shield(handle.interrupt())
+                    await asyncio.shield(asyncio.wait_for(handle.interrupt(), timeout=1.0))
+                    if thread is not None:
+                        async with asyncio.timeout(1):
+                            while True:
+                                history = await thread.read(include_turns=True)
+                                if any(
+                                    item.id == handle.id and item.status.value != "inProgress"
+                                    for item in history.thread.turns
+                                ):
+                                    break
+                                await asyncio.sleep(0.01)
             except Exception:
                 # No receipt or failed interrupt: close the owned server; never redispatch.
                 await asyncio.shield(self.close())
                 if dispatch is not None:
                     dispatch.cancel()
                     await asyncio.gather(dispatch, return_exceptions=True)
+            finally:
+                # SDK interrupt can end the turn while its shell keeps running. Terminate
+                # the verified owned runtime tree before returning the workspace to code.
+                if handle is not None or dispatch is not None:
+                    await asyncio.shield(self.close())
             raise
         except Exception as exc:
             raise map_error(exc) from exc
@@ -346,10 +378,16 @@ class CodexHarness:
             try:
                 for handle in tuple(self._active.values()):
                     if handle is not None:
-                        await handle.interrupt()
+                        try:
+                            await asyncio.wait_for(handle.interrupt(), timeout=1.0)
+                        except Exception:
+                            pass  # owned server shutdown below is the bounded fallback
             finally:
                 try:
-                    await self._codex.close()
+                    try:
+                        await terminate_runtime(self._runtime_pid)
+                    finally:
+                        await self._codex.close()
                 finally:
                     if self._lock is not None:
                         self._lock.close()

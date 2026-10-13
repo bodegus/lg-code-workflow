@@ -107,3 +107,14 @@ read_only_write_denied=True usage={'input_tokens': 36731, 'cached_input_tokens':
 active_command_cancelled=True dedicated_home_lock=True pre_turn_session_lost=True
 ======================= 1 passed, 255 warnings in 18.34s =======================
 ```
+
+## Superseded qualification in review
+
+The early immediate-absence cancellation checks above did not prove physical shell cleanup.
+The strengthened R1 check observed delayed.txt after an interrupted turn. D-034 R1 and
+2026-10-13-t10-review.md retain that failure, the owned-process cleanup correction and the
+passing delayed-write/server-exit proof. The named live test also now proves actual read-only
+execution by a same-call-ID tool receipt and loading AGENTS.md (max-bytes-zero was removed).
+A cached thread ignores in-process policy changes; first resume on separate new servers applied
+false then true in the free probe. Earlier text claiming arbitrary cached-policy reapplication
+is superseded by that measured limit. Total T10 paid spike/smoke dispatches so far: 28.
