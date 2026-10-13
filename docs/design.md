@@ -123,7 +123,9 @@ Each applied command gets an `ack` marker, so it is applied once.
 
 ### 3.4 Reconcile
 
-`reconcile` builds a `PrLedger` from issue and PR comments and review threads, then
+`reconcile` builds a `PrLedger` from issue/PR comments, review threads and submitted review
+bodies. Submitted review facts use their own namespace and require matching author/head/ID
+(D-029); a null marker ID is filled from the enclosing receipt. Then
 `next_step(ledger, issue, pr, threads) -> Step` (pure) picks where to continue:
 
 1. PR merged or closed by a human → end (`closed`).
@@ -153,7 +155,12 @@ implemented pure ledger; D-019 records the remaining pre-publication persistence
 
 ## 4. Steps
 
-Node names are stable (renaming one is a breaking change). All nodes are `async`.
+Node names are stable (renaming one is a breaking change). All nodes are `async`. Runtime context
+is a frozen Pydantic boundary over runtime-checkable capability Protocols. Plain-code nodes retry
+only whitelisted transient errors (four attempts, initial 2 s); build/review have one attempt so a
+lost paid-turn response is reconciled before another dispatch. Configured agent run/idle bounds
+use explicit heartbeats. A failed ask/blocked writer ends with error instead of recursively asking
+(D-028). The caller owns adapter shutdown; run_issue records updates/outcome and writes the report.
 
 | Node | LLM | Does | Next |
 |---|---|---|---|

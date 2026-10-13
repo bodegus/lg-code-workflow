@@ -9,7 +9,7 @@ import pytest
 from lgcw.ledger.commands import owner_commands
 from lgcw.ledger.ledger import build_ledger
 from lgcw.ledger.markers import render_marker
-from lgcw.models.github import IssueComment, ReviewThread, ThreadComment
+from lgcw.models.github import IssueComment, PrReview, ReviewThread, ThreadComment
 from lgcw.models.ledger import (
     AckMarker,
     AskMarker,
@@ -32,6 +32,58 @@ def _comment(number: int, author: str, body: str) -> IssueComment:
         body=body,
         created_at=datetime(2026, 10, 13, tzinfo=UTC) + timedelta(seconds=number),
     )
+
+
+@pytest.mark.unit
+def test_no_inline_review_receipt_recovers_atomic_round_marker() -> None:
+    marker = ReviewMarker(
+        head_sha="a" * 40,
+        level="light",
+        round=1,
+        lenses=("general",),
+        blocking=0,
+        nonblocking=0,
+        review_id=None,
+    )
+    receipt = PrReview(
+        id=42,
+        author="bot",
+        body=render_marker(marker),
+        head_sha="a" * 40,
+        submitted_at=datetime(2026, 10, 13, tzinfo=UTC),
+    )
+    ledger = build_ledger([], [], [], "bot", reviews=[receipt])
+    entry = ledger.latest("review")
+    assert entry and entry.where == "review" and entry.comment_id == 42
+    assert isinstance(entry.marker, ReviewMarker) and entry.marker.review_id == 42
+    assert ledger.counts().review_rounds == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "author,head,review_id",
+    [("foreign", "a" * 40, None), ("bot", "b" * 40, None), ("bot", "a" * 40, 99)],
+)
+def test_review_receipt_must_match_authenticated_author_head_and_id(
+    author: str, head: str, review_id: int | None
+) -> None:
+    marker = ReviewMarker(
+        head_sha="a" * 40,
+        level="light",
+        round=1,
+        lenses=("general",),
+        blocking=0,
+        nonblocking=0,
+        review_id=review_id,
+    )
+    receipt = PrReview(
+        id=42,
+        author=author,
+        body=render_marker(marker),
+        head_sha=head,
+        submitted_at=datetime(2026, 10, 13, tzinfo=UTC),
+    )
+    assert build_ledger([], [], [], "bot", reviews=[receipt]).entries == ()
 
 
 def _ledger(*markers: Marker) -> PrLedger:

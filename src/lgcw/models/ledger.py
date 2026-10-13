@@ -127,7 +127,7 @@ class LedgerEntry(Strict):
 
     comment_id: int
     created_at: datetime
-    where: Literal["issue", "pr", "thread"]
+    where: Literal["issue", "pr", "thread", "review"]
     marker: Marker
 
 

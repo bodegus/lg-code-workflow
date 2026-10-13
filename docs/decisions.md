@@ -464,3 +464,48 @@ our own code. Research references point into [research/](research/).
   latest invocation incomplete if it has no run_end; a log alone never proves a live process.
 - **Revisit when:** Phase 1 run inspection needs another report view or multi-process writes.
   Local files are evidence/cache only; GitHub remains the workflow's canonical progress record.
+
+## D-028 T12 runtime contracts and conservative node failure policies
+
+- **Evidence:** docs/spikes/2026-10-13-runtime-contracts.md, pinned local probes. LangGraph injects
+  NodeError/context into default handlers and routes their Command to ask; heartbeat-only idle
+  expiry reaches the same handler. Pydantic arbitrary_types_allowed requires runtime-checkable
+  Protocols. Decorate all four ports; this checks structural capabilities, not method signatures.
+- **SDK finding:** 0.162.1 CodexClient.start copies os.environ then updates it with config.env.
+  Four supplied keys do not isolate credentials. An env-clearing launcher removed a synthetic
+  inherited marker, but Python added macOS metadata; actual-Codex follow-up failed setup twice
+  and remains inconclusive. T10 must qualify the actual process, not assume SDK env replacement.
+  No dependency added; the official SDK's bundled runtime helper is already its dependency.
+- **Graph:** immutable registered node mappings, no LangGraph checkpointer. Until all real nodes
+  are implemented, default compilation fails explicitly rather than filling successful stubs.
+  Tests inject a complete node mapping. Optional limits on build_graph and optional nodes on
+  run_issue make configured policies and compiled runtime behavior testable without patching.
+- **Retries:** plain-code nodes use four transient-only attempts, initial 2 s. Whitelist transport
+  timeout/connection failures and SDK HTTP 5xx; never retry auth, quota, 4xx, schema errors or agent
+  dispatch automatically. Agent nodes get one attempt: a lost response must be reconciled before
+  another paid turn. Ask/blocked failures terminate with error instead of recursively asking.
+- **Limits/lifecycle:** compile agent timeouts from configured Limits with explicit heartbeats.
+  Derive a generous finite recursion guard from loop caps; it does not grant any node another
+  fix/rerun. run_issue logs each update and terminal outcome, preserves cancellation as an
+  incomplete invocation, and saves the report. The caller that constructs adapters owns close.
+  Registration uses a keyword-aware callable Protocol and a fail-closed optional NodeError
+  sentinel, proven in a strict-type/runtime probe; no casts/ignores/private LangGraph imports.
+  The first router test used get_args on a PEP 695 alias and parametrized zero cases. Enumerate
+  the Pydantic Step schema instead, and assert the graph covers that independent declared enum.
+- **Routing:** ready must agree with the current PR and latest owned push. Unowned/moved heads
+  ask; unresolved findings are trusted only through authenticated ledger entries. Missing review
+  thread evidence asks. Durable issue/handoff/pre-publication attempt gaps (D-019) are still node
+  integration work, not qualified by this graph skeleton.
+
+## D-029 T12 submitted-review receipts become authoritative ledger facts
+
+- **Decided:** 2026-10-13. Complete D-020's read-side recovery with optional keyword
+  build_ledger(..., reviews=()). Submitted review bodies are a separate namespace:
+  LedgerEntry.where adds review; conversation and inline comment contracts stay distinct.
+- **Admission:** exact workflow author, ReviewMarker only, matching submitted head, and a null
+  marker review_id or the actual enclosing receipt ID. Fill the null ID from that receipt without
+  posting a second marker. The no-inline regression failed first with unexpected keyword reviews.
+  Foreign authors and mismatched heads/IDs are rejected in table-driven tests.
+- **Limits:** this proves pure ingestion of already-read records, not a live GitHub submission
+  or end-to-end lost-response recovery. T16 must read these receipts before posting another review
+  and prove the crash case on the compiled graph. No dependency added.

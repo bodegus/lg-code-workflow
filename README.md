@@ -13,7 +13,8 @@ and log trimming pass the local gate. T7 review sizing and finding admission als
 against real temporary bare repositories. T9 supplies the typed harness port, fenced prompts,
 packaged step skills and in-memory fake; the real Codex adapter remains pending. T11 local
 run evidence and usage reports pass their contract tests. T10 requires the dedicated workflow
-login and its live SDK spike before qualification.
+login and its live SDK spike before qualification. T12 has a locally proven graph skeleton,
+reconciliation and runtime policies; default compilation refuses the still-missing T13–T16 nodes.
 T5's GitHub adapter passes local checks; its live contract is pending a usable issue-enabled
 sandbox (the existing OpenClaw fixture disables Issues). See decisions D-021/D-022.
 No complete live execution has been qualified yet. See the checked tasks in the plan.

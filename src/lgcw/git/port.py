@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pydantic import SecretStr
 
@@ -56,6 +56,7 @@ class PushRejectedError(RuntimeError):
     """The proposed push would violate branch ownership or its exact lease."""
 
 
+@runtime_checkable
 class WorkspacePort(Protocol):
     """Workspace operations available to plain-code graph nodes."""
 

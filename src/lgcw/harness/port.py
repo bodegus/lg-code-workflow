@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
 from lgcw.models.harness import SessionRef, SessionSpec, TurnInput, TurnOutcome
 
 
+@runtime_checkable
 class HarnessPort(Protocol):
     """Start explicit-role sessions, run typed turns and close the owned server."""
 

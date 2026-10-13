@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from lgcw.models.github import (
     IssueComment,
@@ -27,6 +27,7 @@ class TokenProvider(Protocol):
         ...
 
 
+@runtime_checkable
 class GitHubPort(Protocol):
     """GitHub operations available to deterministic workflow nodes."""
 
