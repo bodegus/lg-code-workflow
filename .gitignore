@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local workflow state (never commit)
+.lgcw/
+.env
+.env.*
+
+# Spikes keep their transcript in docs/spikes/, not their code
+spikes/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
