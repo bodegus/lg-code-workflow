@@ -54,6 +54,7 @@ background in [research/README.md](research/README.md).
 | `WorkflowConfig`, `RepoConfig`, `Limits`, `RequiredCheck`, `RiskClass`, `ReviewThresholds` | `lgcw.models.config` | T1 |
 | `IssueRef`, `IssueSnapshot`, `IntakeResult` | `lgcw.models.issue` | T1 |
 | `PrSnapshot`, `IssueComment`, `ReviewThread`, `ThreadComment`, `ReviewCommentDraft`, `RunView`, `JobView` | `lgcw.models.github` | T1 |
+| `PrReview` (submitted review receipt; D-020) | `lgcw.models.github` | T4 |
 | `Marker` (union), `RunMarker`, `SessionMarker`, `PushMarker`, `CiMarker`, `ReviewMarker`, `FindingMarker`, `AskMarker`, `AckMarker`, `ReadyMarker`, `BlockedMarker`, `LedgerEntry`, `PrLedger`, `Command`, `LedgerCounts` | `lgcw.models.ledger` | T1; `PrLedger` methods and `LedgerCounts` T3 |
 | `BuildHandoff`, `Decision`, `AcceptanceItem`, `FileNote`, `TestRun`, `Risk`, `Disposition` | `lgcw.models.handoff` | T1 |
 | `ReviewLevel`, `Lens`, `ReviewVerdict`, `ReviewFinding`, `CodeLocation`, `LineRange`, `FindingCheck`, `LevelDecision`, `GatedFinding`, `GateResult`, `DiffStat`, `FileChange`, `LensVerdict` | `lgcw.models.review` | T1 |
@@ -62,9 +63,11 @@ background in [research/README.md](research/README.md).
 | `Step`, `RunOutcome`, `Feedback`, `PendingAsk`, `RunState` | `lgcw.models.state` | T1 |
 | `GitHubPort`, `TokenProvider` | `lgcw.github.port` | T4 |
 | `WorkspacePort`, `WorkspaceInfo`, `CommandResult`, `PushAuth`, `PushRejectedError` | `lgcw.git.port` | T8 |
+| `GitResult`, `git` | `lgcw.git.run` | T8 |
 | `HarnessPort`, `HarnessError` family | `lgcw.harness.port`, `lgcw.harness.errors` | T9 |
 | `Clock`, `SystemClock` | `lgcw.clock` | T1 |
-| `RunLog`, `redact`, `render_report` | `lgcw.runlog` | T11 |
+| `redact` (D-021: brought forward for T5 token safety) | `lgcw.runlog` | T5 |
+| `RunLog`, `render_report` | `lgcw.runlog` | T11 |
 | `RunContext`, `ReconcileView`, `ReconcileOutcome`, `next_step`, `build_graph`, `run_issue` | `lgcw.graph` | T12 |
 | `FakeGitHub`, `FakeHarness`, `FakeClock` | `tests.fakes` | T4, T9, T1 |
 
@@ -80,9 +83,9 @@ background in [research/README.md](research/README.md).
 - Create: `tests/__init__.py`, `tests/conftest.py`, `tests/unit/test_package.py`, `tests/unit/test_lanes.py`
 
 **Interfaces:**
-- Produces: `lgcw.__version__: str`; markers `unit`, `live`; autouse fixture `isolated_env` (sets `LGCW_HOME` to `tmp_path/"lgcw"`, removes `GH_TOKEN`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `CODEX_HOME`, sets `LANGSMITH_TRACING=false`); `pytest_collection_modifyitems` rejects a test without exactly one lane; `live` tests skipped unless `LGCW_LIVE=1`.
+- Produces: `lgcw.__version__: str`; markers `unit`, `live`; autouse fixture `isolated_env` (sets `LGCW_HOME` to `tmp_path/"lgcw"`, removes `GH_TOKEN`, `GITHUB_TOKEN`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `CODEX_HOME`, removes `LGCW_LIVE` for `unit` items while preserving opt-in for `live` items, sets `LANGSMITH_TRACING=false`); `pytest_collection_modifyitems` rejects a test without exactly one lane; `live` tests skipped unless `LGCW_LIVE=1`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 @pytest.mark.unit
@@ -101,10 +104,10 @@ def test_isolated_env_removes_tokens() -> None:
     assert "GH_TOKEN" not in os.environ and os.environ["LANGSMITH_TRACING"] == "false"
 ```
 
-- [ ] **Step 2: Run them to see them fail** — `uv run pytest -m unit` → errors (no package, no conftest).
-- [ ] **Step 3: Create the project files.** `pyproject.toml` with the Global Constraints' versions, tool sections and coverage settings (`[tool.coverage.run] source = ["lgcw"]`, `omit` the two live adapters, `[tool.coverage.report] fail_under = 90`). `Makefile` targets: `setup` (`uv sync` + `uv run pre-commit install`), `lint` (`uv run ruff check src tests` and `uv run ruff format --check src tests`), `type` (`uv run mypy src tests`), `test` (`uv run pytest -m unit --cov=lgcw`), `check` (lint, type, test), `live` (`LGCW_LIVE=1 uv run pytest -m live`). Pre-commit: gitleaks, trailing-whitespace, end-of-file-fixer, check-toml, check-yaml, check-added-large-files, ruff check/format, mypy, `pytest -m unit`. CI workflow on `pull_request` and `push` to `main`: ubuntu-latest, `astral-sh/setup-uv`, `uv sync --locked`, `make check`.
-- [ ] **Step 4: Run** `uv sync && make check` → all pass, coverage report printed.
-- [ ] **Step 5: Commit** `chore: project skeleton, toolchain and test lanes`.
+- [x] **Step 2: Run them to see them fail** — `uv run pytest -m unit` → errors (no package, no conftest).
+- [x] **Step 3: Create the project files.** `pyproject.toml` with the Global Constraints' versions, tool sections and coverage settings (`[tool.coverage.run] source = ["lgcw"]`, `omit` the two live adapters, `[tool.coverage.report] fail_under = 90`). `Makefile` targets: `setup` (`uv sync` + `uv run pre-commit install`), `lint` (`uv run ruff check src tests` and `uv run ruff format --check src tests`), `type` (`uv run mypy src tests`), `test` (`uv run pytest -m unit --cov=lgcw`), `check` (lint, type, test), `live` (`LGCW_LIVE=1 uv run pytest -m live`). Pre-commit: gitleaks, trailing-whitespace, end-of-file-fixer, check-toml, check-yaml, check-added-large-files, ruff check/format, mypy, `pytest -m unit`. CI workflow on `pull_request` and `push` to `main`: ubuntu-latest, `astral-sh/setup-uv`, `uv sync --locked`, `make check`.
+- [x] **Step 4: Run** `uv sync && make check` → all pass, coverage report printed.
+- [x] **Step 5: Commit** `chore: project skeleton, toolchain and test lanes`.
 
 ### Task T1: Core models and strict output schemas
 
@@ -118,17 +121,17 @@ def test_isolated_env_removes_tokens() -> None:
   - `RequiredCheck(workflow: str, job: str)`; `RiskClass(name: str, globs: tuple[str, ...])`; `ReviewThresholds(light_max_lines: int = 99, standard_max_lines: int = 499, many_files: int = 8)`; `Limits` with the Global Constraints defaults (`review_fix_rounds: dict[ReviewLevel, int]`).
   - `RepoConfig(full_name, default_branch, allowed_authors: tuple[str, ...], setup: tuple[str, ...], gate: tuple[str, ...], required_checks: tuple[RequiredCheck, ...], protected_globs, excluded_globs, source_globs, tests_globs, docs_globs: tuple[str, ...], risk_classes: tuple[RiskClass, ...], known_flaky: tuple[str, ...] = (), pre_existing_policy: Literal["note", "ask"] = "note")`.
   - `WorkflowConfig(home: Path, codex_home: Path, model: str | None, builder_effort: str, reviewer_effort: dict[ReviewLevel, str], verifier_effort: str, limits: Limits, thresholds: ReviewThresholds, repos: dict[str, RepoConfig])`.
-  - `IssueRef(repo: str, number: int)` with `IssueRef.parse("owner/repo#12")`; `IssueSnapshot(repo, number, title, body, author, state, labels: tuple[str, ...], updated_at: datetime, url)`; `IntakeResult(status: Literal["ok", "incomplete", "rejected"], acceptance_criteria: tuple[str, ...], reason: str | None)`.
-  - `PrSnapshot(number, node_id, url, state: Literal["OPEN", "CLOSED", "MERGED"], head_ref, head_sha, base_ref, is_draft: bool, mergeable: Literal["MERGEABLE", "CONFLICTING", "UNKNOWN"], merge_state: str, labels: tuple[str, ...])`; `IssueComment(id: int, author: str, body: str, created_at: datetime)`; `ThreadComment(id: int, author: str, body: str)`; `ReviewThread(node_id: str, is_resolved: bool, path: str, line: int | None, comments: tuple[ThreadComment, ...])`; `ReviewCommentDraft(path: str, line: int, start_line: int | None, body: str)`; `RunView(run_id, workflow, event, status, conclusion: str | None, head_sha, run_attempt: int)`; `JobView(job_id, run_id, workflow, name, status, conclusion: str | None, run_attempt, failed_steps: tuple[str, ...], annotations: tuple[str, ...], runner_name: str | None, url)`.
-  - Markers (field `kind` is the discriminator; field lists in design §3.1): `RunMarker`, `SessionMarker`, `PushMarker`, `CiMarker`, `ReviewMarker`, `FindingMarker`, `AskMarker`, `AckMarker`, `ReadyMarker`, `BlockedMarker`; `Marker = Annotated[Union[...], Field(discriminator="kind")]`; `LedgerEntry(comment_id: int, created_at: datetime, where: Literal["issue", "pr", "thread"], marker: Marker)`; `PrLedger(entries: tuple[LedgerEntry, ...])`; `Command(verb: Literal["answer", "retry", "abort"], text: str, comment_id: int, author: str)`.
+  - `IssueRef(repo: str, number: int)` with `IssueRef.parse("owner/repo#12")`; `IssueSnapshot(repo, number, title, body, author, state, labels: tuple[str, ...], updated_at: datetime, url, is_pull_request: bool = False)` (D-021: typed intake discrimination); `IntakeResult(status: Literal["ok", "incomplete", "rejected"], acceptance_criteria: tuple[str, ...], reason: str | None)`.
+  - `PrSnapshot(number, node_id, url, state: Literal["OPEN", "CLOSED", "MERGED"], head_ref, head_sha, base_ref, is_draft: bool, mergeable: Literal["MERGEABLE", "CONFLICTING", "UNKNOWN"], merge_state: str, labels: tuple[str, ...])`; `IssueComment(id: int, author: str, body: str, created_at: datetime)`; `ThreadComment(id: int, author: str, body: str)`; `ReviewThread(node_id: str, is_resolved: bool, path: str, line: int | None, comments: tuple[ThreadComment, ...])`; `ReviewCommentDraft(path: str, line: int, start_line: int | None, body: str)`; `RunView(run_id, workflow, event, status, conclusion: str | None, head_sha, run_attempt: int, created_at: datetime | None = None)`; `JobView(job_id, run_id, workflow, name, status, conclusion: str | None, run_attempt, failed_steps: tuple[str, ...], annotations: tuple[str, ...], runner_name: str | None, url)`.
+  - Markers (field `kind` is the discriminator; field lists in design §3.1): `RunMarker`, `SessionMarker`, `PushMarker`, `CiMarker`, `ReviewMarker`, `FindingMarker`, `AskMarker`, `AckMarker`, `ReadyMarker`, `BlockedMarker`; `Marker = Annotated[Union[...], Field(discriminator="kind")]`; `LedgerEntry(comment_id: int, created_at: datetime, where: Literal["issue", "pr", "thread", "review"], marker: Marker)`; `PrLedger(entries: tuple[LedgerEntry, ...])`; `Command(verb: Literal["answer", "retry", "abort"], text: str, comment_id: int, author: str)`.
   - Strict output models (no defaults): `Decision(decision, alternatives_rejected: list[str], reason, evidence)`, `AcceptanceItem(criterion, status: Literal["met", "partial", "not_met"], evidence)`, `FileNote(path, why)`, `TestRun(command, result: Literal["pass", "fail", "not_run"], note)`, `Risk(area, why)`, `Disposition(finding_id, decision: Literal["fixed", "wont_fix", "invalid"], note, paths: list[str])`, `BuildHandoff(status: Literal["done", "blocked", "partial"], summary: list[str], approach: str, decisions, assumptions: list[str], acceptance, files, tests, not_done: list[str], risks, open_questions: list[str], followups: list[str], dispositions: list[Disposition])`; `LineRange(start: int, end: int)`, `CodeLocation(absolute_file_path: str, line_range: LineRange)`, `ReviewFinding(title, body, confidence_score: float (0..1), priority: int (0..3), category: str, code_location: CodeLocation)`, `ReviewVerdict(findings: list[ReviewFinding], overall_correctness: Literal["patch is correct", "patch is incorrect"], overall_explanation: str, overall_confidence_score: float)`, `FindingCheck(valid: bool, introduced_by_change: bool, reason: str)`.
   - Policy models: `ReviewLevel = Literal["none", "light", "standard", "deep"]`, `Lens = Literal["general", "security", "tests", "ops"]`, `LevelDecision(level, lenses: tuple[Lens, ...], reasons: tuple[str, ...], fix_round_cap: int)`, `FileChange(path, added: int, deleted: int)`, `DiffStat(files: tuple[FileChange, ...])` with `changed_lines` and `paths` properties, `LensVerdict(lens: Lens, verdict: ReviewVerdict)`, `GatedFinding(id: str, lens: Lens, path: str, finding: ReviewFinding, blocking: bool, reason: str)`, `GateResult(blocking, nonblocking, dropped: tuple[GatedFinding, ...])`.
-  - CI: `CiStatus`, `CiClass`, `CiAction = Literal["wait", "rerun", "fix", "proceed_note", "ask"]`, `CiDecision(head_sha, status, klass: CiClass | None, action, job: JobView | None, fingerprint: str | None, note: str)`, `CiHistory(reruns_by_head: dict[str, int], reruns_total: int, ci_fix_rounds: int, fingerprints: tuple[str, ...])`.
+  - CI: `CiStatus`, `CiClass`, `CiAction = Literal["wait", "rerun", "fix", "proceed_note", "ask"]`, `CiDecision(head_sha, status, klass: CiClass | None, action, job: JobView | None, fingerprint: str | None, note: str)`, `CiHistory(reruns_by_head: dict[str, int], reruns_total: int, ci_fix_rounds: int, fingerprints: tuple[str, ...], reruns_by_class_head: dict[str, dict[CiClass, int]] = {})`.
   - Harness: `Role = Literal["builder", "reviewer", "verifier"]`, `SessionSpec(role, cwd: Path, sandbox: Literal["workspace_write", "read_only"], network: bool, effort: str, model: str | None)`, `SessionRef(session_id: str, role: Role)`, `TurnInput(skill: str, text: str, data: str | None, data_label: str | None)`, `Usage(input_tokens: int, cached_input_tokens: int, output_tokens: int, reasoning_output_tokens: int, context_window: int | None)`, `TurnOutcome[M](session_id: str, output: M, usage: Usage, duration_s: float, rollout_path: Path | None)` (generic `BaseModel`).
   - State (mutable model, `frozen=False`): `Step = Literal["reconcile", "intake", "open_pr", "build", "gate", "publish", "ci_wait", "review", "merge_ready", "ask", "blocked", "end"]`, `RunOutcome = Literal["merge_ready", "waiting", "blocked", "closed", "error"]`, `Feedback(source: Literal["gate", "ci", "review", "owner", "no_changes"], summary: str, data: str | None, fingerprint: str | None)`, `PendingAsk(question: str, return_to: Step, code: str)`, `RunState` (fields: `issue_ref`, `issue`, `intake`, `branch`, `base_sha`, `pr`, `ledger`, `threads`, `builder_session`, `handoff`, `feedback`, `ci`, `level`, `gated`, `last_reviewed_sha`, `ask`, `owner_answer`, `next_step`, `outcome`; counters are derived, not stored).
   - `Clock` Protocol (`now() -> datetime`, `async sleep(seconds: float) -> None`), `SystemClock`; `tests.fakes.clock.FakeClock(start: datetime)` whose `sleep` advances `now()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_strict_schema_build_handoff_is_strict():
@@ -163,10 +166,10 @@ def test_issue_ref_parse():
 ```
 (all marked `@pytest.mark.unit`)
 
-- [ ] **Step 2: Run** `uv run pytest tests/unit/models -m unit` → FAIL (import errors).
-- [ ] **Step 3: Implement the models** in the listed modules; `strict_json_schema` walks `$defs` and every object schema.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(models): core Pydantic models and strict output schemas`.
+- [x] **Step 2: Run** `uv run pytest tests/unit/models -m unit` → FAIL (import errors).
+- [x] **Step 3: Implement the models** in the listed modules; `strict_json_schema` walks `$defs` and every object schema.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(models): core Pydantic models and strict output schemas`.
 
 ### Task T2: Configuration loading
 
@@ -178,11 +181,11 @@ def test_issue_ref_parse():
 - Consumes: `WorkflowConfig`, `RepoConfig` (T1).
 - Produces: `load_config(root: Path, *, home: Path | None = None) -> WorkflowConfig` (reads `root/config/workflow.toml` and every `root/config/repos/*.toml`; `home` defaults to `$LGCW_HOME` or `~/.lgcw`); `WorkflowConfig.repo(full_name: str) -> RepoConfig` raising `UnknownRepoError`; `ConfigError` for a file name that does not match `full_name` (`owner__repo.toml`).
 
-- [ ] **Step 1: Write the failing tests**: `test_load_defaults` (limits equal the Global Constraints), `test_home_from_env` (`LGCW_HOME` → `config.codex_home == home / "codex"`), `test_repo_filename_must_match`, `test_unknown_key_rejected`, `test_unknown_repo_raises`, `test_sandbox_repo_config_valid`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** with `tomllib` and `model_validate`; sandbox config: `setup = []`, `gate = []`, `required_checks` from its `ci.yml` job names (read the workflow file; record the names).
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(config): load workflow and per-repo configuration`.
+- [x] **Step 1: Write the failing tests**: `test_load_defaults` (limits equal the Global Constraints), `test_home_from_env` (`LGCW_HOME` → `config.codex_home == home / "codex"`), `test_repo_filename_must_match`, `test_unknown_key_rejected`, `test_unknown_repo_raises`, `test_sandbox_repo_config_valid`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** with `tomllib` and `model_validate`; sandbox config: `setup = []`, `gate = []`, `required_checks` from its `ci.yml` job names (read the workflow file; record the names).
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(config): load workflow and per-repo configuration`.
 
 ### Task T3: Markers, commands and the ledger (pure)
 
@@ -192,9 +195,9 @@ def test_issue_ref_parse():
 
 **Interfaces:**
 - Consumes: marker models, `IssueComment`, `ReviewThread`, `Command` (T1).
-- Produces: `render_marker(marker: Marker) -> str`; `parse_markers(body: str) -> list[Marker]` (malformed JSON or unknown kind is skipped, never raises); `strip_markers(body: str) -> str`; `parse_command(body: str) -> tuple[Literal["answer", "retry", "abort"], str] | None` (first non-empty line `/lgcw <verb> [text]`; text = rest of the line plus following lines); `fingerprint(*parts: str) -> str` (sha256 hex, first 16 chars); `build_ledger(issue_comments: Sequence[IssueComment], pr_comments: Sequence[IssueComment], threads: Sequence[ReviewThread], workflow_login: str) -> PrLedger`; `owner_commands(comments: Sequence[IssueComment], allowed_authors: Collection[str], after_comment_id: int) -> list[Command]`; `PrLedger` methods `latest(kind) -> LedgerEntry | None`, `of_kind(kind) -> list[LedgerEntry]`, `pending_ask() -> LedgerEntry | None` (an `ask` without a later `ack` of the same `seq`), `last_push() -> PushMarker | None`, `ci_for(head_sha) -> CiMarker | None`, `reviews_for(head_sha) -> list[ReviewMarker]`, `counts() -> LedgerCounts` (gate/ci/review fix rounds, reruns per head and total, review rounds, fresh restarts — all derived from `push`, `ci`, `review`, `session` markers).
+- Produces: `render_marker(marker: Marker) -> str`; `parse_markers(body: str) -> list[Marker]` (one complete trailing marker; multiple complete markers, malformed JSON or unknown kind are ignored, never raises); `strip_markers(body: str) -> str`; `parse_command(body: str) -> tuple[Literal["answer", "retry", "abort"], str] | None` (first non-empty line `/lgcw <verb> [text]`; text = rest of the line plus following lines); `fingerprint(*parts: str) -> str` (sha256 hex, first 16 chars); `build_ledger(issue_comments: Sequence[IssueComment], pr_comments: Sequence[IssueComment], threads: Sequence[ReviewThread], workflow_login: str, *, reviews: Sequence[PrReview] = ()) -> PrLedger`; `owner_commands(comments: Sequence[IssueComment], allowed_authors: Collection[str], after_comment_id: int) -> list[Command]`; `PrLedger` methods `latest(kind) -> LedgerEntry | None`, `of_kind(kind) -> list[LedgerEntry]`, `pending_ask() -> LedgerEntry | None` (an `ask` without a later `ack` of the same `seq`), `last_push() -> PushMarker | None`, `ci_for(head_sha) -> CiMarker | None`, `reviews_for(head_sha) -> list[ReviewMarker]`, `counts() -> LedgerCounts` (gate/ci/review fix rounds, reruns per head and total, review rounds, fresh restarts, retry grants by step/code — all derived from `push`, `ci`, `review`, `session`, `ask`, `ack` markers).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_marker_round_trip_with_hostile_text():
@@ -225,10 +228,10 @@ def test_counts_derived_from_markers():
     assert (c.ci_fix_rounds, c.reruns_by_head["c"], c.reruns_total) == (1, 1, 1)
 ```
 
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.** `render_marker` uses `json.dumps(..., separators=(",", ":"), ensure_ascii=True)` and then replaces every `--` in that text with a hyphen followed by the JSON escape for a hyphen (backslash, `u002d`), which is valid inside JSON strings and never needed elsewhere in compact JSON, so ` -->` can never occur inside a marker; `parse_markers` uses the regex `<!-- lgcw:v1 (\{.*?\}) -->` and `TypeAdapter(Marker)`.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(ledger): markers, owner commands and the PR ledger`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.** `render_marker` uses `json.dumps(..., separators=(",", ":"), ensure_ascii=True)` and then replaces every `--` in that text with a hyphen followed by the JSON escape for a hyphen (backslash, `u002d`), which is valid inside JSON strings and never needed elsewhere in compact JSON, so ` -->` can never occur inside a marker; `parse_markers` uses the regex `<!-- lgcw:v1 (\{.*?\}) -->` and `TypeAdapter(Marker)`.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(ledger): markers, owner commands and the PR ledger`.
 
 ### Task T4: GitHub port, fake and renderers
 
@@ -237,15 +240,16 @@ def test_counts_derived_from_markers():
 - Create: `tests/fakes/github.py`, `tests/unit/github/test_render.py`, `tests/unit/github/test_fake_github.py`, `tests/contract/__init__.py`, `tests/contract/github_scenarios.py`
 
 **Interfaces:**
-- Produces `GitHubPort` (Protocol, all `async`): `viewer_login() -> str`; `get_issue(ref: IssueRef) -> IssueSnapshot`; `list_issue_comments(repo: str, number: int) -> list[IssueComment]` (also PR conversation comments); `create_issue_comment(repo, number, body) -> IssueComment`; `find_open_pr(repo, head_branch) -> PrSnapshot | None`; `get_pr(repo, number) -> PrSnapshot` (GraphQL: head, draft, mergeable, merge state); `create_draft_pr(repo, head, base, title, body) -> PrSnapshot`; `update_pr_body(repo, number, body) -> None`; `set_labels(repo, number, add: Sequence[str], remove: Sequence[str]) -> None`; `mark_ready(pr_node_id: str) -> None`; `create_review(repo, number, commit_sha, body, comments: Sequence[ReviewCommentDraft]) -> int` (event `COMMENT`); `list_review_threads(repo, number) -> list[ReviewThread]`; `reply_to_review_comment(repo, number, comment_id, body) -> None`; `resolve_thread(node_id, reason: Literal["ADDRESSED", "WONT_FIX", "INVALID"]) -> None`; `runs_for_sha(repo, head_sha) -> list[RunView]`; `jobs_for_run(repo, run_id) -> list[JobView]` (annotations filled for failed or cancelled jobs); `job_log(repo, job_id) -> str`; `rerun_failed_jobs(repo, run_id) -> None`; `latest_base_jobs(repo, workflow, branch) -> list[JobView]`. `TokenProvider` Protocol: `token() -> str`.
+- Produces `GitHubPort` (Protocol, all `async`): `viewer_login() -> str`; `get_issue(ref: IssueRef) -> IssueSnapshot`; `list_issue_comments(repo: str, number: int) -> list[IssueComment]` (also PR conversation comments); `create_issue_comment(repo, number, body) -> IssueComment`; `find_open_pr(repo, head_branch) -> PrSnapshot | None`; `get_pr(repo, number) -> PrSnapshot` (GraphQL: head, draft, mergeable, merge state); `create_draft_pr(repo, head, base, title, body) -> PrSnapshot`; `update_pr_body(repo, number, body) -> None`; `set_labels(repo, number, add: Sequence[str], remove: Sequence[str]) -> None`; `mark_ready(pr_node_id: str) -> None`; `create_review(repo, number, commit_sha, body, comments: Sequence[ReviewCommentDraft]) -> int` (event `COMMENT`); `list_review_threads(repo, number) -> list[ReviewThread]`; `list_pr_reviews(repo, number) -> list[PrReview]` (D-020: review-body recovery, including no-inline reviews); `reply_to_review_comment(repo, number, comment_id, body) -> None`; `resolve_thread(node_id, reason: Literal["ADDRESSED", "WONT_FIX", "INVALID"]) -> None`; `runs_for_sha(repo, head_sha) -> list[RunView]`; `jobs_for_run(repo, run_id) -> list[JobView]` (annotations filled for failed or cancelled jobs); `job_log(repo, job_id) -> str`; `rerun_failed_jobs(repo, run_id) -> None`; `latest_base_jobs(repo, workflow, branch) -> list[JobView]`. `TokenProvider` Protocol: `token() -> str`.
 - Produces `FakeGitHub(GitHubPort)`: in-memory issues, comments (ids increase), PRs, threads, labels; `script_runs(head_sha, timeline: list[tuple[float, list[RunView], list[JobView]]])` keyed to `FakeClock` time; `calls: list[tuple[str, dict]]`; `fail_after(method: str, n: int, exc: Exception)` for crash tests; `merge` does not exist.
+- Produces: `PrReview(id: int, author: str, body: str, head_sha: str | None, submitted_at: datetime)` in `models/github.py` (D-020).
 - Produces renderers: `render_pr_body(issue: IssueSnapshot, handoff: BuildHandoff | None, status: PrStatus) -> str` (`PrStatus(checklist: tuple[tuple[str, bool], ...], ci: str, review: str, notes: tuple[str, ...])`); `render_event(text: str, marker: Marker) -> str`; `render_question(question: str, marker: AskMarker) -> str` (lists the three commands).
 
-- [ ] **Step 1: Write the failing tests**: `test_pr_body_starts_with_fixes`, `test_pr_body_capped_at_60000` (a handoff with 5,000 decisions renders ≤ 60,000 chars and says "more omitted"), `test_pr_body_model_text_between_markers`, `test_event_ends_with_marker`, `test_question_lists_commands`, and contract scenarios in `tests/contract/github_scenarios.py` (`scenario_issue_comments_round_trip`, `scenario_draft_pr_then_ready`, `scenario_review_thread_reply_and_resolve`) run here against `FakeGitHub` via `tests/unit/github/test_fake_github.py`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the Protocol, renderers (templates via `string.Template`) and the fake.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(github): port, renderers and in-memory fake`.
+- [x] **Step 1: Write the failing tests**: `test_pr_body_starts_with_fixes`, `test_pr_body_capped_at_60000` (a handoff with 5,000 decisions renders ≤ 60,000 chars and says "more omitted"), `test_pr_body_model_text_between_markers`, `test_event_ends_with_marker`, `test_question_lists_commands`, and contract scenarios in `tests/contract/github_scenarios.py` (`scenario_issue_comments_round_trip`, `scenario_draft_pr_then_ready`, `scenario_review_thread_reply_and_resolve`) run here against `FakeGitHub` via `tests/unit/github/test_fake_github.py`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** the Protocol, renderers (templates via `string.Template`) and the fake.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(github): port, renderers and in-memory fake`.
 
 ### Task T5: GitHub client (githubkit) and token
 
@@ -257,11 +261,14 @@ def test_counts_derived_from_markers():
 - Consumes: `GitHubPort` (T4), models (T1).
 - Produces: `require_live(component: str, allow_live: bool) -> None` raising `LiveAdapterDisabledError` unless `allow_live` or `LGCW_LIVE=1`; `GhCliTokenProvider(TokenProvider)` (`gh auth token`, cached 50 minutes, never logged); `GitHubClient(token_provider: TokenProvider, *, allow_live: bool = False)` implementing every `GitHubPort` method with githubkit (REST; GraphQL for `get_pr`, `mark_ready`, `list_review_threads`, `resolve_thread`); pure mapping functions `pr_from_graphql(data: dict[str, Any]) -> PrSnapshot`, `job_from_rest(job: dict[str, Any], annotations: list[dict[str, Any]]) -> JobView`, `thread_from_graphql(node: dict[str, Any]) -> ReviewThread`.
 
-- [ ] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against `bodegus/oc2-publish-sandbox` (`@pytest.mark.live`).
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.** Mutating calls wait at least 1 s between each other (GitHub best practice); node retry policies (T12) handle transient errors, so the client does not retry 4xx.
+- [x] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against `bodegus/oc2-publish-sandbox` (`@pytest.mark.live`).
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.** Mutating calls wait at least 1 s between each other (GitHub best practice); node retry policies (T12) handle transient errors, so the client does not retry 4xx.
 - [ ] **Step 4: Run** `make check` → PASS; then `LGCW_LIVE=1 uv run pytest tests/live/test_github_contract.py -m live` → PASS (the builder runs it; output pasted in the PR).
-- [ ] **Step 5: Commit** `feat(github): githubkit client behind GitHubPort`.
+- [x] **Step 5: Commit** `feat(github): githubkit client behind GitHubPort`.
+
+
+T5 live status (D-022): local `make check` passed; the first live contract failed at fixture issue creation (HTTP 410, Issues disabled). Temporary branch cleanup is verified. The live checkbox stays open pending the owner's fixture choice; do not call the adapter live-qualified yet.
 
 ### Task T6: CI policy — classifier, decision table, log trimming (pure)
 
@@ -271,9 +278,9 @@ def test_counts_derived_from_markers():
 
 **Interfaces:**
 - Consumes: `RequiredCheck`, `Limits`, `PrSnapshot`, `RunView`, `JobView`, `CiDecision`, `CiHistory` (T1).
-- Produces: `classify(required: Sequence[RequiredCheck], runs: Sequence[RunView], jobs: Sequence[JobView], pr: PrSnapshot, pushed_sha: str, pushed_at: datetime, now: datetime, limits: Limits) -> tuple[CiStatus, tuple[JobView, ...]]` (a required job `cancelled` with the timeout annotation counts as `failure`; without it, `blocked`); `decide(status: CiStatus, failing: Sequence[JobView], runs: Sequence[RunView], base_jobs: Sequence[JobView] | None, history: CiHistory, diff_paths: Sequence[str], log_tails: Mapping[int, str], repo: RepoConfig, limits: Limits) -> CiDecision` (design §8 rows, top to bottom); `trim_job_log(raw: str, failed_steps: Sequence[str], max_bytes: int = 8192) -> str`; `failure_fingerprint(workflow: str, job: str, step: str, first_error: str) -> str` (digits and paths normalised); regex constants in `patterns.py` (`TIMEOUT_ANNOTATION`, `INFRA_PATTERNS`, `RESOURCE_PATTERNS`, `ERROR_START`).
+- Produces: `classify(required: Sequence[RequiredCheck], runs: Sequence[RunView], jobs: Sequence[JobView], pr: PrSnapshot, pushed_sha: str, pushed_at: datetime, now: datetime, limits: Limits) -> tuple[CiStatus, tuple[JobView, ...]]` (a required job `cancelled` with the timeout annotation counts as `failure`; without it, `blocked`); `decide(status: CiStatus, failing: Sequence[JobView], runs: Sequence[RunView], base_jobs: Sequence[JobView] | None, history: CiHistory, diff_paths: Sequence[str], log_tails: Mapping[int, str], repo: RepoConfig, limits: Limits, *, pushed_sha: str) -> CiDecision` (design §8 rows, top to bottom); `trim_job_log(raw: str, failed_steps: Sequence[str], max_bytes: int = 8192) -> str`; `failure_fingerprint(workflow: str, job: str, step: str, first_error: str) -> str` (digits and paths normalised); regex constants in `patterns.py` (`TIMEOUT_ANNOTATION`, `INFRA_PATTERNS`, `RESOURCE_PATTERNS`, `ERROR_START`).
 
-- [ ] **Step 1: Write the failing tests** (table-driven):
+- [x] **Step 1: Write the failing tests** (table-driven):
 
 ```python
 @pytest.mark.parametrize("case", CLASSIFY_CASES, ids=lambda c: c.name)
@@ -300,10 +307,13 @@ def test_trim_keeps_errors_and_caps_size():
     assert len(out.encode()) <= 8192 and "##[error]" in out and "\x1b[" not in out
 ```
 
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the three pure functions and the pattern table.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(ci): classifier, fix-or-move-on table and log trimming`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** the three pure functions and the pattern table.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(ci): classifier, fix-or-move-on table and log trimming`.
+
+
+T6 proof: missing CI modules produced three collection errors first. Final `make check` passed: 220 unit tests, 1 live deselected, strict mypy (61 files), lint/format, 99.78% coverage. D-023 records exact-head/class-history inputs and terminal qualification semantics. No live call is required for this pure task.
 
 ### Task T7: Review policy — diff stats, level picker, finding gate (pure)
 
@@ -315,11 +325,14 @@ def test_trim_keeps_errors_and_caps_size():
 - Consumes: `DiffStat`, `FileChange`, `LevelDecision`, `LensVerdict`, `GatedFinding`, `GateResult`, `Risk`, `RepoConfig`, `ReviewThresholds`, `Limits` (T1).
 - Produces: `parse_numstat(text: str, excluded_globs: Sequence[str]) -> DiffStat` (binary files count as 1 line); `pick_level(diff: DiffStat, owner_labels: Sequence[str], builder_risks: Sequence[Risk], repo: RepoConfig, thresholds: ReviewThresholds, limits: Limits, *, previous: LevelDecision | None = None) -> LevelDecision` (first match in design §7; owner label wins; `previous` can only be raised); `finding_id(path: str, title: str, category: str) -> str`; `gate_findings(results: Sequence[LensVerdict], level: LevelDecision, ranges: Mapping[str, Sequence[LineRange]], repo_root: Path, known_ids: Collection[str]) -> GateResult`. Glob matching with `PurePosixPath.full_match`.
 
-- [ ] **Step 1: Write the failing tests** (table-driven): docs-only → `none`; 40 source lines → `light`; 120 lines → `standard` with lens `general`; source without tests → lenses include `tests`; `.github/workflows/ci.yml` → `deep` with `("general", "security", "tests")`; owner label `lgcw:review-light` on a deep change → `light`; a builder risk raises light → standard; `previous=deep` stays `deep`; gate: P1 inside range blocks, P1 outside range dropped, P2 at standard non-blocking, P2 `security` at deep blocking, confidence 0.6 at light non-blocking, a known id is not repeated.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(review): review levels and finding gate`.
+- [x] **Step 1: Write the failing tests** (table-driven): docs-only → `none`; 40 source lines → `light`; 120 lines → `standard` with lens `general`; source without tests → lenses include `tests`; `.github/workflows/ci.yml` → `deep` with `("general", "security", "tests")`; owner label `lgcw:review-light` on a deep change → `light`; a builder risk raises light → standard; `previous=deep` stays `deep`; gate: P1 inside range blocks, P1 outside range dropped, P2 at standard non-blocking, P2 `security` at deep blocking, confidence 0.6 at light non-blocking, a known id is not repeated.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(review): review levels and finding gate`.
+
+
+T7 proof: three missing-module collection errors first; a new deep+ops regression failed with a fourth reviewer before the implementation fix. Final `make check`: 270 unit tests, 1 live deselected, strict mypy (68 files), lint/format, 99.53% coverage. D-024 records conservative manifests, owner-label/previous-depth precedence, confidence and lexical location admission. No live calls required.
 
 ### Task T8: Workspace — git wrapper and per-issue clone
 
@@ -328,13 +341,16 @@ def test_trim_keeps_errors_and_caps_size():
 - Create: `tests/unit/git/test_run.py`, `tests/unit/git/test_workspace.py` (real `git`, a bare repo in `tmp_path` as `origin`)
 
 **Interfaces:**
-- Produces: `async git(*args: str, cwd: Path, env: Mapping[str, str] | None = None, timeout_s: float = 120) -> GitResult(argv: tuple[str, ...], code: int, out: str, err: str)` (always `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, `GIT_TERMINAL_PROMPT=0`); `PushAuth(token: SecretStr)` with `env() -> dict[str, str]` producing `GIT_CONFIG_COUNT/KEY_0/VALUE_0` (`http.https://github.com/.extraheader`, `AUTHORIZATION: basic <base64(x-access-token:token)>`); `WorkspaceInfo(repo_dir: Path, branch: str, base_sha: str, resumed: bool)`; `CommandResult(ok: bool, command: str, code: int, tail: str, fingerprint: str | None, duration_s: float, log_path: Path)`; `PushRejectedError`; `WorkspacePort` Protocol and `GitWorkspace(home: Path)` with `prepare(repo: RepoConfig, issue: IssueRef, branch: str) -> WorkspaceInfo`, `run_commands(cwd: Path, commands: Sequence[str], timeout_s: float, log_path: Path) -> CommandResult`, `numstat(base_sha: str) -> str` (includes untracked files), `changed_paths(base_sha: str) -> tuple[str, ...]`, `commit_all(message: str, trailers: Mapping[str, str]) -> str | None`, `commit_empty(message: str) -> str`, `push(branch: str, expected_remote_sha: str | None, auth: PushAuth) -> str`, `diff_text(from_sha: str, to_sha: str, max_bytes: int) -> str`, `adopt_remote_head(branch: str) -> str`, `reviewer_checkout(head_sha: str, base_sha: str) -> Path`.
+- Produces: `async git(*args: str, cwd: Path, env: Mapping[str, str] | None = None, timeout_s: float = 120) -> GitResult(argv: tuple[str, ...], code: int, out: str, err: str)` (always `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, `GIT_TERMINAL_PROMPT=0`); `PushAuth(token: SecretStr)` with `env() -> dict[str, str]` producing `GIT_CONFIG_COUNT/KEY_0/VALUE_0` (`http.https://github.com/.extraheader`, `AUTHORIZATION: basic <base64(x-access-token:token)>`); `WorkspaceInfo(repo_dir: Path, branch: str, base_sha: str, resumed: bool)`; `CommandResult(ok: bool, command: str, code: int, tail: str, fingerprint: str | None, duration_s: float, log_path: Path)`; `PushRejectedError`; `WorkspacePort` Protocol and `GitWorkspace(home: Path, *, origin: Path | None = None, token_provider: TokenProvider | None = None, allow_live: bool = False)` (D-025) with `prepare(repo: RepoConfig, issue: IssueRef, branch: str) -> WorkspaceInfo`, `head_sha() -> str` (existing local commit for recovery; D-025), `run_commands(cwd: Path, commands: Sequence[str], timeout_s: float, log_path: Path) -> CommandResult`, `numstat(base_sha: str) -> str` (includes untracked files), `changed_paths(base_sha: str) -> tuple[str, ...]`, `commit_all(message: str, trailers: Mapping[str, str]) -> str | None`, `commit_empty(message: str) -> str`, `push(branch: str, expected_remote_sha: str | None, auth: PushAuth) -> str`, `diff_text(from_sha: str, to_sha: str, max_bytes: int) -> str`, `adopt_remote_head(branch: str) -> str`, `reviewer_checkout(head_sha: str, base_sha: str) -> Path`.
 
-- [ ] **Step 1: Write the failing tests**: `test_prepare_new_branch_from_default`, `test_prepare_resumes_existing_remote_branch`, `test_commit_all_returns_none_when_clean`, `test_push_lease_rejects_unexpected_remote` (raises `PushRejectedError`), `test_push_new_branch_rejected_if_exists`, `test_token_never_in_argv_or_config` (`"tok123" not in " ".join(result.argv)` and not in `.git/config`), `test_hooks_disabled` (a `pre-commit` hook that writes a file does not run), `test_reviewer_checkout_overlays_base_instructions` (head changed `AGENTS.md`; checkout shows base content), `test_run_commands_failure_tail_and_timeout`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** with `asyncio.create_subprocess_exec` (explicit argv, never a shell for git; repo setup/gate commands run with `bash -lc` because they are trusted config).
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(git): workspace wrapper over the git CLI`.
+- [x] **Step 1: Write the failing tests**: `test_prepare_new_branch_from_default`, `test_prepare_resumes_existing_remote_branch`, `test_commit_all_returns_none_when_clean`, `test_push_lease_rejects_unexpected_remote` (raises `PushRejectedError`), `test_push_new_branch_rejected_if_exists`, `test_token_never_in_argv_or_config` (`"tok123" not in " ".join(result.argv)` and not in `.git/config`), `test_hooks_disabled` (a `pre-commit` hook that writes a file does not run), `test_reviewer_checkout_overlays_base_instructions` (head changed `AGENTS.md`; checkout shows base content), `test_run_commands_failure_tail_and_timeout`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** with `asyncio.create_subprocess_exec` (explicit argv, never a shell for git; repo setup/gate commands run with `bash -lc` because they are trusted config).
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(git): workspace wrapper over the git CLI`.
+
+
+T8 proof: two missing-module collection errors first. Additional unchanged regressions failed before fixes for a base instruction parent alias, token-shaped argv, and missing head-read capability. Final `make check`: 293 unit tests, 1 live deselected, strict mypy (75 files), lint/format, 98.21% coverage. Real local bare repos prove stale leases, owner head preservation, hook suppression, clean commit idempotence, review overlays and process-group timeout. No GitHub/LLM calls made. D-025 records private fetch auth and recovery inputs.
 
 ### Task T9: Harness port, fake, prompts and step skills
 
@@ -348,11 +364,14 @@ def test_trim_keeps_errors_and_caps_size():
 - Produces renderers: `render_build_turn(issue: IssueSnapshot, intake: IntakeResult, repo: RepoConfig, owner_answer: str | None) -> TurnInput`; `render_fix_turn(feedback: Feedback, criteria: Sequence[str], open_findings: Sequence[GatedFinding], handoff: BuildHandoff | None, owner_answer: str | None) -> TurnInput`; `render_restart_turn(issue: IssueSnapshot, criteria: Sequence[str], handoff: BuildHandoff | None, open_findings: Sequence[GatedFinding], feedback: Feedback | None) -> TurnInput`; `ReviewPacket(issue_title, criteria, base_sha, head_sha, range_from: str, diffstat: str, level: LevelDecision, lens: Lens, ci_summary: str, gate_summary: str, approach: str, decisions: list[Decision], assumptions: list[str], not_done: list[str], risks: list[Risk], files: list[FileNote], acceptance_evidence: list[str], open_findings: list[GatedFinding], do_not_repeat: list[str])`; `render_review_turn(packet: ReviewPacket) -> TurnInput`; `render_verify_turn(finding: GatedFinding, hunk: str) -> TurnInput`; `fence(data: str, label: str) -> str` (backtick run longer than any in `data`); `skill_path(name: str) -> Path`.
 - Produces `FakeHarness(HarnessPort)`: `script(role: Role, outputs: list[BaseModel | Exception])`; `sessions: list[SessionSpec]`; `turns: list[tuple[SessionRef, TurnInput]]`; usage values configurable to drive the context-restart rule.
 
-- [ ] **Step 1: Write the failing tests**: `test_fix_turn_restates_findings_and_criteria` (every open finding id and every criterion appear in `turn.text`), `test_untrusted_data_is_fenced` (data containing a 3-backtick fence cannot close the fence), `test_review_packet_hides_builder_grades` (rendered review turn contains no handoff `summary` line and no acceptance `status` words), `test_skills_have_frontmatter_and_budget` (each `SKILL.md` has `name` and `description`, < 5,000 bytes), `test_fake_harness_records_and_raises`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the port, errors, templates, renderers, step skills (build: plan, edit, run the repo's tests, return `BuildHandoff`, never commit; fix: address each listed finding or failure, one disposition per finding id; review: Codex review rubric, only issues introduced by the change, priority P0–P3, stay inside the given range; review-security and review-tests: the lens focus; verify-finding: confirm or reject one finding) and the fake.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(harness): port, prompts, step skills and fake`.
+- [x] **Step 1: Write the failing tests**: `test_fix_turn_restates_findings_and_criteria` (every open finding id and every criterion appear in `turn.text`), `test_untrusted_data_is_fenced` (data containing a 3-backtick fence cannot close the fence), `test_review_packet_hides_builder_grades` (rendered review turn contains no handoff `summary` line and no acceptance `status` words), `test_skills_have_frontmatter_and_budget` (each `SKILL.md` has `name` and `description`, < 5,000 bytes), `test_fake_harness_records_and_raises`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** the port, errors, templates, renderers, step skills (build: plan, edit, run the repo's tests, return `BuildHandoff`, never commit; fix: address each listed finding or failure, one disposition per finding id; review: Codex review rubric, only issues introduced by the change, priority P0–P3, stay inside the given range; review-security and review-tests: the lens focus; verify-finding: confirm or reject one finding) and the fake.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(harness): port, prompts, step skills and fake`.
+
+
+T9 proof: three missing-module collection errors first. Wheel inspection exposed a missing build skill; the git-ignore regression failed before anchoring /build/. Final `make check`: 324 unit tests, 1 live deselected, strict mypy (85 files), lint/format, 98.25% coverage. All six quick_validate skill checks pass; rebuilt wheel has five harness templates and six skills; fresh wheel import outside source resolves every exact skill path and renders a verify prompt. D-026 records self-contained fences and review packet boundaries. SDK invocation behavior is still T10 live work.
 
 ### Task T10: Codex harness (live adapter) and its spike
 
@@ -375,17 +394,21 @@ def test_trim_keeps_errors_and_caps_size():
 ### Task T11: Run log, redaction and report
 
 **Files:**
-- Create: `src/lgcw/runlog/{__init__,log,redact,report}.py`
+- Reuse: `src/lgcw/runlog/{__init__,redact}.py` and redaction tests (brought forward in T5, D-021).
+- Create: `src/lgcw/runlog/{log,report}.py`
 - Create: `tests/unit/runlog/test_redact.py`, `test_log.py`, `test_report.py`
 
 **Interfaces:**
-- Produces: `redact(text: str) -> str` (masks `gh[pousr]_…`, `github_pat_…`, `sk-…`, three-part JWTs, `Authorization:` headers, `x-access-token:` URLs); `RunLog(run_dir: Path)` with `event(kind: str, *, node: str | None = None, **fields: JsonValue) -> None` (JSONL with ISO timestamp, redacted), `turn(seq: int, role: Role, turn: TurnInput, outcome: TurnOutcome[Any] | None, error: str | None) -> Path`, `artifact(rel: str, content: str) -> Path`, `posted(kind: str, body: str, ids: Mapping[str, str | int]) -> Path`; `render_report(run_dir: Path) -> str`.
+- Produces: `redact(text: str) -> str` (masks `gh[pousr]_…`, `github_pat_…`, `sk-…`, three-part JWTs, `Authorization:` headers, `x-access-token:` URLs); `RunLog(run_dir: Path, *, clock: Clock | None = None)` (D-027) with `event(kind: str, *, node: str | None = None, **fields: JsonValue) -> None` (JSONL with ISO timestamp, redacted), `turn(seq: int, role: Role, turn: TurnInput, outcome: TurnOutcome[Any] | None, error: str | None) -> Path`, `artifact(rel: str, content: str) -> Path`, `posted(kind: str, body: str, ids: Mapping[str, str | int]) -> Path`; `write_report() -> Path` (atomically saves the semantically redacted derived view), `render_report(run_dir: Path) -> str`.
 
-- [ ] **Step 1: Write the failing tests**: one redaction case per pattern; `test_events_are_jsonl_with_timestamps`; `test_report_has_timeline_turns_and_totals` (a synthetic run folder: report contains the step table, one row per turn with input, cached, output and reasoning tokens, and totals); `test_report_empty_run`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(runlog): run log, redaction and report`.
+- [x] **Step 1: Write the failing tests**: one redaction case per pattern; `test_events_are_jsonl_with_timestamps`; `test_report_has_timeline_turns_and_totals` (a synthetic run folder: report contains the step table, one row per turn with input, cached, output and reasoning tokens, and totals); `test_report_empty_run`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(runlog): run log, redaction and report`.
+
+
+T11 proof: missing RunLog imports caused two collection errors first. New report regressions failed before fixes for neighboring-field loss after header redaction, outside-run turn symlinks, an earlier completed outcome after a newer unfinished invocation, and a second redaction pass on saved report cells. Final `make check`: 345 unit tests, 1 live deselected, strict mypy (89 files), lint/format, 97.99% coverage. The two failed E501 attempts were recorded on PR #1; independent type/runtime checks and a measured shorter-literal probe resolved formatting without suppression. D-027 records evidence/derived-view distinctions. T10 stays pending its owner-login/live spike.
 
 ### Task T12: Graph skeleton — context, reconcile, routers, wiring
 
@@ -395,9 +418,9 @@ def test_trim_keeps_errors_and_caps_size():
 
 **Interfaces:**
 - Consumes: everything from T1–T11.
-- Produces: `RunContext` (Pydantic, `arbitrary_types_allowed=True, frozen=True`: `config`, `repo`, `issue_ref`, `github: GitHubPort`, `workspace: WorkspacePort`, `harness: HarnessPort`, `clock: Clock`, `log: RunLog`, `workflow_login: str`); `ReconcileView(issue: IssueSnapshot | None, pr: PrSnapshot | None, ledger: PrLedger, threads: tuple[ReviewThread, ...], commands: tuple[Command, ...])`; `next_step(view: ReconcileView) -> ReconcileOutcome(step: Step, command: Command | None, ask: PendingAsk | None, reason: str)` implementing design §3.4; routers `route_after_reconcile`, `route_after_intake`, `route_after_open_pr`, `route_after_build`, `route_after_gate`, `route_after_publish`, `route_after_ci`, `route_after_review` (each `(state: RunState) -> Step`, reading `state.next_step`); `NodeFn = Callable[[RunState, Runtime[RunContext]], Awaitable[dict[str, Any]]]`; `build_graph(nodes: Mapping[Step, NodeFn] | None = None) -> CompiledStateGraph` (defaults from `lgcw.graph.nodes.DEFAULT_NODES`, node policies from `policies.py`: transient-only `RetryPolicy(max_attempts=4, initial_interval=2.0)`, `TimeoutPolicy` for agent nodes per Global Constraints, default `error_handler` that sets `ask` with the node name and error class); `async run_issue(ctx: RunContext) -> RunOutcome`.
+- Produces: `RunContext` (Pydantic, `arbitrary_types_allowed=True, frozen=True`: `config`, `repo`, `issue_ref`, `github: GitHubPort`, `workspace: WorkspacePort`, `harness: HarnessPort`, `clock: Clock`, `log: RunLog`, `workflow_login: str`); `ReconcileView(issue: IssueSnapshot | None, pr: PrSnapshot | None, ledger: PrLedger, threads: tuple[ReviewThread, ...], commands: tuple[Command, ...])`; `next_step(view: ReconcileView) -> ReconcileOutcome(step: Step, command: Command | None, ask: PendingAsk | None, reason: str)` implementing design §3.4; routers `route_after_reconcile`, `route_after_intake`, `route_after_open_pr`, `route_after_build`, `route_after_gate`, `route_after_publish`, `route_after_ci`, `route_after_review` (each `(state: RunState) -> Step`, reading `state.next_step`); `NodeFn = Callable[[RunState, Runtime[RunContext]], Awaitable[dict[str, Any]]]`; `build_graph(nodes: Mapping[Step, NodeFn] | None = None, *, limits: Limits | None = None) -> CompiledStateGraph` (defaults from `lgcw.graph.nodes.DEFAULT_NODES`, node policies from `policies.py`: transient-only `RetryPolicy(max_attempts=4, initial_interval=2.0)`, `TimeoutPolicy` for agent nodes per Global Constraints, default `error_handler` that sets `ask` with the node name and error class); `async run_issue(ctx: RunContext, *, nodes: Mapping[Step, NodeFn] | None = None) -> RunOutcome`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 @pytest.mark.parametrize("case", NEXT_STEP_CASES, ids=lambda c: c.name)
@@ -416,10 +439,13 @@ def test_every_router_target_is_a_node():   # compile with trivial nodes, walk e
     assert set(edges_of(g)) >= ROUTER_TARGETS
 ```
 
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement**; `run_issue` invokes the graph with `context=ctx` and returns `state.outcome`, logging every update from `astream(stream_mode="updates")` to `ctx.log`.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(graph): reconcile, routers and graph wiring`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement**; `run_issue` invokes the graph with `context=ctx` and returns `state.outcome`, logging every update from `astream(stream_mode="updates")` to `ctx.log`.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(graph): reconcile, routers and graph wiring`.
+
+
+T12 proof: missing graph modules caused three collection errors first; the no-inline review-ingestion regression failed before adding reviews= and the review ledger namespace. Pinned free probes confirmed context/error-handler/idle behavior and identified runtime-checkable Protocol and typed-callable requirements. Actual-Codex environment follow-up remains inconclusive after two setup failures; T10 is untouched. Final `make check`: 404 unit tests, 1 live deselected, strict mypy (102 files), lint/format, 98.15% coverage. Compiled graph tests cover configured timeout, cancellation, fatal fallback, terminal-writer failure, all declared router targets, and refusal of implicit success. Default registration deliberately fails until T13–T16 supply real nodes. D-028/D-029 record boundaries and refinements.
 
 ### Task T13: Nodes — intake, open_pr, ask, blocked
 
@@ -531,3 +557,15 @@ Package an `lgcw` image; run on horse first under an OpenClaw cron command job (
 own Codex login and GitHub App on the host through home-infra Ansible; notifications through
 OpenClaw; record the workflow in openclaw2-deploy's PLAN.md §6 and amend its AGENTS.md for the
 hosted component. Exit: design §15 Phase 3 criteria.
+
+
+### Round-2 foundation corrections (PR #1)
+
+The T1–T12 review identified SDK UNSET mapping, ambiguous markers, partial level maps, CI
+consequence/baseline/log layout errors, lockfile risk loss, git config transport attacks,
+case-insensitive instructions, moving resume bases, and graph recovery/logging defects.
+Regression tests cover every required R2 finding. R2-E3 changes the old no-push expectation
+from ask to verified `open_pr` recovery; the concrete writer/recovery proof remains T13.
+The former multi-marker parsing test encoded behavior contrary to design §3.1; its assertion
+now rejects the entire ambiguous comment while still proving prose-preserving stripping.
+No gate, coverage threshold, timeout, or assertion was relaxed to hide a failure.

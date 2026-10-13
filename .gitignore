@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
-build/
+/build/
 dist/
 .mypy_cache/
 .ruff_cache/
@@ -18,7 +18,7 @@ htmlcov/
 .env.*
 
 # Spikes keep their transcript in docs/spikes/, not their code
-spikes/
+/spikes/
 
 # OS / editors
 .DS_Store

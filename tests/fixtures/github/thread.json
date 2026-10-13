@@ -1,0 +1,4 @@
+{
+  "id": "THREAD_synthetic", "isResolved": false, "path": "a.py", "line": 1,
+  "comments": {"nodes": [{"databaseId": 123, "fullDatabaseId": "4294967299", "body": "Synthetic finding", "author": {"login": "example"}}]}
+}

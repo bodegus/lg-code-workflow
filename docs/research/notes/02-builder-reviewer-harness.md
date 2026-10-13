@@ -1060,4 +1060,3 @@ Codex source links are at `rust-v0.162.1` = commit `092d3acd`.
   are rejected unless allow-listed (`[skills].extra_allowed_dirs`); instructions are *combined*: base prompt +
   `~/.deepagents/{agent}/AGENTS.md` + `.deepagents/AGENTS.md` + root `AGENTS.md`. **verified**:
   [code/configuration.mdx "Precedence rules"](https://docs.langchain.com/oss/python/deepagents/code/configuration).
-

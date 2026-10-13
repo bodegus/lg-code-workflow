@@ -116,14 +116,19 @@ repo config's `allowed_authors`, after the open question's comment id:
 | Command | Effect |
 |---|---|
 | `/lgcw answer <text>` | continue at the question's step; `<text>` becomes a trusted owner instruction for the next agent turn |
-| `/lgcw retry` | continue at the question's step with that step's counter reduced by one |
+| `/lgcw retry` | continue at the question's step with one additional round granted for its step/code |
 | `/lgcw abort` | stop: `blocked` marker, `lgcw:blocked` label, draft PR kept |
 
-Each applied command gets an `ack` marker, so it is applied once.
+Each applied command gets an `ack` marker, so it is applied once. `LedgerCounts.retry_grants`
+joins retry acknowledgements to prior `ask(seq)` facts by step/code; duplicate command IDs do
+not grant twice. Activity counts retain the actual number of attempts; consuming nodes compare
+those counts with the configured limit plus the corresponding grants.
 
 ### 3.4 Reconcile
 
-`reconcile` builds a `PrLedger` from issue and PR comments and review threads, then
+`reconcile` builds a `PrLedger` from issue/PR comments, review threads and submitted review
+bodies. Submitted review facts use their own namespace and require matching author/head/ID
+(D-029); a null marker ID is filled from the enclosing receipt. Then
 `next_step(ledger, issue, pr, threads) -> Step` (pure) picks where to continue:
 
 1. PR merged or closed by a human → end (`closed`).
@@ -132,7 +137,8 @@ Each applied command gets an `ack` marker, so it is applied once.
 3. `ready` for the current head → end (`merge_ready`).
 4. PR head ≠ the last `push` head → `ask` ("head moved"); `/lgcw retry` adopts the new head with a
    `push` marker of source `human`.
-5. Otherwise continue from the last completed fact for the current head: no PR → `intake`; only the
+5. An open PR without a push receipt → idempotent `open_pr` recovery, which verifies its initial
+   checkpoint before writing missing receipts. Otherwise continue from the last completed fact for the current head: no PR → `intake`; only the
    initial push → `build`; a push with no `ci` marker → `ci_wait`; `ci` action `fix` → `build`;
    `ci` success or `proceed_note` with no `review` → `review`; a `review` with open blocking
    threads → `build`; a `review` with none → `merge_ready`.
@@ -142,14 +148,23 @@ Counters (fix rounds, reruns, review rounds) are recomputed from the ledger, nev
 ### 3.5 Why this is enough to survive crashes
 
 Each node checks for its own marker before acting and writes the marker as part of the same step,
-so rerunning `lgcw run` after a crash or kill continues where GitHub says the run is. The two
-non-atomic windows (push then marker; review post then marker) are closed by looking for the
-effect itself: the remote branch head, or a review whose body carries the round's marker. The
-builder's Codex thread id is in the `session` marker, so a rerun resumes the same thread.
+so rerunning `lgcw run` after a crash or kill continues where GitHub says the run is. The
+push-then-marker window is closed by checking the remote branch head. A submitted review whose
+response was lost is recovered through `list_pr_reviews`, including reviews with no inline
+findings; its body carries the round marker in the original submission (D-020). That marker can
+have a null review ID until GitHub assigns it; the enclosing review receipt provides the actual
+ID without a second event. The builder's Codex thread id is in the `session` marker, so a rerun
+resumes the same thread. These are integration requirements, not qualification of the currently
+implemented pure ledger; D-019 records the remaining pre-publication persistence gaps.
 
 ## 4. Steps
 
-Node names are stable (renaming one is a breaking change). All nodes are `async`.
+Node names are stable (renaming one is a breaking change). All nodes are `async`. Runtime context
+is a frozen Pydantic boundary over runtime-checkable capability Protocols. Plain-code nodes retry
+only whitelisted transient errors (four attempts, initial 2 s); build/review have one attempt so a
+lost paid-turn response is reconciled before another dispatch. Configured agent run/idle bounds
+use explicit heartbeats. A failed ask/blocked writer ends with error instead of recursively asking
+(D-028). The caller owns adapter shutdown; run_issue records updates/outcome and writes the report.
 
 | Node | LLM | Does | Next |
 |---|---|---|---|
@@ -172,7 +187,8 @@ Step details:
   `acceptance criteria|done when|definition of done|expected` (case-insensitive), else every
   `- [ ]` checklist item, else incomplete → `ask` on the issue. The issue is snapshotted (title,
   body, `updated_at`); `merge_ready` notes it if the issue changed later.
-- **open_pr.** Bare mirror fetch, `git clone --local` per issue, branch `lgcw/issue-<n>` from the
+- **open_pr.** Code-only token provider supplies ephemeral GIT_CONFIG environment authentication
+  to private fetches (D-025), never a URL or persisted config. Bare mirror fetch, `git clone --local` per issue, branch `lgcw/issue-<n>` from the
   default branch (or the existing remote branch on rerun). Runs the repo's `setup` commands
   (network on). Pushes the empty commit with lease "branch must not exist", opens the draft PR
   (title = issue title, body starts `Fixes #<n>`), labels `lgcw:active`, writes `run` and `push`
@@ -251,9 +267,11 @@ Step details:
 
 ## 7. Review levels and finding rules
 
-`pick_level` (pure) uses `git diff --numstat` over base..head (excluding `excluded_globs`: lockfiles,
-generated, vendored), the repo's risk-class globs, owner labels and the handoff's `risks`. A human
-label wins; nothing an agent writes can lower a level. Thresholds are config (re-fit after about 30
+`pick_level` (pure) uses `git diff --numstat` over base..head (excluding `excluded_globs` from line counts, while retaining
+excluded paths as risk evidence), the repo's risk-class globs, owner labels and the handoff's `risks`. A human
+label chooses the initial level; a previous decision remains a floor on fix deltas. Conflicting
+owner labels choose the strongest level. Nothing an agent writes can lower a level. Manifest and lockfile
+changes conservatively select deep because numstat cannot prove no dependency was added (D-024; R2-C6). A fully excluded diff never selects `none`. Thresholds are config (re-fit after about 30
 runs).
 
 | Level | When (first match) | Reviewers | Effort | Blocks on | Fix rounds |
@@ -264,7 +282,10 @@ runs).
 | none | only docs/tests/generated files, CI green, no agent instructions | 0 | — | — | — |
 
 Rules (code): a finding blocks only if it is P0/P1 (P2 security at deep), inside the reviewed lines
-and above the level's confidence bar. At standard and deep, each blocking finding first gets a
+and above the level's confidence bar (light >= 0.7; standard/deep defer confidence to the
+independent verifier). The complete finding range must lie inside one reviewed range; reject
+absolute locations outside the checkout and all parent traversal. This gate is lexical and
+performs no filesystem reads. At standard and deep, each blocking finding first gets a
 verifier turn (`FindingCheck`: valid, introduced by the change); only confirmed ones reach the
 builder. Everything else is listed once in the review body and never raised again (dedupe by
 `finding_id = sha256(path, normalized title, category)[:16]` against existing threads). Re-reviews
@@ -275,14 +296,21 @@ owner in the summary, not looped on. The builder answers each blocking finding w
 
 ## 8. CI handling
 
-`classify(required, runs, jobs, pr, pushed_sha, pushed_at, now) -> (CiStatus, failing_jobs)` (pure).
+`classify(required, runs, jobs, pr, pushed_sha, pushed_at, now, limits) -> (CiStatus, failing_jobs)` (pure).
 Required checks are `(workflow name, job name)` pairs from repo config, unioned with any the
 repository's rulesets report. States: `pending` (no checks yet, or required not reported, or running),
 `success`, `failure`, `blocked` (cancelled or stale without a timeout annotation), `missing` (nothing
 after `ci_start_grace_s`, default 600), `conflict`, `head_moved`, `timeout` (past `ci_deadline_s`,
 default 5,400). Poll interval starts at 15 s and doubles to 120 s; a heartbeat each round.
 
-`decide(...) -> CiDecision` (pure), first matching row per failing required job:
+`decide(..., *, pushed_sha) -> CiDecision` (pure), first matching row per failing required job.
+The exact owned head is required even when no run exists; per-class rerun counts come from the
+ledger. Choose the latest run/attempt per workflow and evaluate every required job instance.
+Required skipped/neutral checks block; active required workflows remain pending. The deadline
+bounds waiting, while completed current-head results remain authoritative after it. Aggregate
+job actions by ask > fix > rerun > wait > proceed-note, so one pre-existing failure cannot conceal
+an introduced failure (D-023).
+
 
 | Class | Signal | Action |
 |---|---|---|
@@ -313,7 +341,7 @@ required, nullable where optional). Field lists are in the plan's Interfaces blo
 |---|---|---|
 | `WorkflowConfig`, `RepoConfig`, `Limits`, `RequiredCheck`, `RiskClass`, `ReviewThresholds` | `models/config.py` | configuration |
 | `IssueSnapshot`, `IntakeResult` | `models/issue.py` | intake |
-| `PrSnapshot`, `IssueComment`, `ReviewThread`, `ThreadComment`, `ReviewCommentDraft`, `RunView`, `JobView` | `models/github.py` | GitHub records |
+| `PrSnapshot`, `PrReview`, `IssueComment`, `ReviewThread`, `ThreadComment`, `ReviewCommentDraft`, `RunView`, `JobView` | `models/github.py` | GitHub records |
 | marker union (`RunMarker` … `BlockedMarker`), `LedgerEntry`, `PrLedger`, `Command` | `models/ledger.py` | the PR record |
 | `BuildHandoff`, `Decision`, `AcceptanceItem`, `FileNote`, `TestRun`, `Risk`, `Disposition` | `models/handoff.py` | builder output (strict) |
 | `ReviewVerdict`, `ReviewFinding`, `CodeLocation`, `LineRange`, `FindingCheck` | `models/review.py` | reviewer and verifier output (strict) |
@@ -322,11 +350,18 @@ required, nullable where optional). Field lists are in the plan's Interfaces blo
 | `SessionSpec`, `SessionRef`, `TurnInput`, `Usage`, `TurnOutcome` | `models/harness.py` | harness port |
 | `Feedback`, `RunState` (mutable) | `models/state.py` | graph state |
 
+The log trimmer strips an initial UTF-8 BOM and treats a step section as everything from
+`##[group]` to the next `##[group]`. `##[endgroup]` ends the command-echo wrapper, not the
+step output. If the named section has no error, retain the first section containing an error.
+CI decisions use required workflows only, ignore cancelled/skipped/neutral consequences within
+a genuinely failed run, and compare against the latest completed base run/attempt per workflow.
+Blocked CI never dispatches a builder fix.
+
 ## 10. Failure handling
 
 | Failure | Handling |
 |---|---|
-| transient HTTP (5xx, 429, network) | node `RetryPolicy` (max 4, backoff from 2 s) with an explicit `retry_on`; never 4xx or `CalledProcessError` |
+| transient HTTP (5xx, network) | node `RetryPolicy` (max 4, backoff from 2 s) with an explicit `retry_on`; never 4xx (including 429) or `CalledProcessError`; paid agent dispatch is single-attempt |
 | any other exception after retries | default `error_handler` → `ask` with the node name and error class (no traceback in the comment; full traceback in the run log) |
 | Codex login, quota, timeout, invalid output | §5 |
 | crash or kill mid-run | rerun `lgcw run`; reconcile continues (§3.5) |
@@ -351,7 +386,12 @@ Inspecting runs is the main output of Phase 1, so every run writes, under
   turn with tokens (cached separately), rounds per loop, CI actions, findings and dispositions, and
   links to the raw files.
 
-All writes go through `redact()`, which removes token-shaped strings. Nothing is sent to a tracing
+All writes redact credential-shaped strings. Structured JSON redacts each value before
+serialization, so header redaction cannot consume neighboring fields. RunLog.write_report saves
+the semantically redacted derived view atomically without a second regex pass. Raw artifacts/turns
+cannot overwrite different evidence; report.md can be regenerated. Report reads stay inside the
+run folder, unknown usage remains unknown, and a later invocation without run_end is incomplete
+rather than inheriting an earlier completed outcome (D-027). Nothing is sent to a tracing
 service (`LANGSMITH_TRACING=false`).
 
 ## 12. Configuration
@@ -405,7 +445,8 @@ Job names must be checked against real runs when the file is written (plan task 
 Phase 1 runs on the owner's Mac with accepted exposures (D-004, D-012): Codex can read the home
 directory (including the `gh` login), and the builder has network access. Still enforced: no token
 in the Codex environment, in argv, in `.git/config` or in logs; `.git` read-only for the builder;
-reviewers read-only; owner-only commands; untrusted text fenced; hooks disabled for host git
+reviewers read-only on independent detached clones with base instruction overlays; checkout
+symlink escapes and instruction-parent aliases are rejected; owner-only commands; untrusted text fenced; hooks disabled for host git
 (`-c core.hooksPath=/dev/null`). Phase 2 targets: GitHub App identity, egress allowlist,
 Docker sandbox or Codex `exec-server` split, deny-read on `CODEX_HOME`.
 

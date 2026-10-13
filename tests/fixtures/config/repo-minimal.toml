@@ -1,0 +1,12 @@
+full_name = "example/sandbox"
+default_branch = "main"
+allowed_authors = ["example"]
+setup = []
+gate = []
+required_checks = [{ workflow = "CI", job = "test" }]
+protected_globs = [".github/workflows/**"]
+excluded_globs = ["package-lock.json"]
+source_globs = ["src/**"]
+tests_globs = ["tests/**"]
+docs_globs = ["**/*.md"]
+risk_classes = []

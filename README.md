@@ -6,7 +6,18 @@ merges. The pull request is the run's record: decisions are PR comments with hid
 findings are review threads, and you steer a run by replying `/lgcw answer …`, `/lgcw retry` or
 `/lgcw abort` on the PR.
 
-**Status:** Phase 1 (local, on the owner's Mac). Nothing is built yet; start with plan task T0.
+**Status:** Phase 1 (local, on the owner's Mac), under construction. T0 toolchain, T1 models,
+T2 configuration, T3 ledger logic and T4 GitHub port/renderers/fake are implemented. Live adapters,
+graph nodes and the functional CLI are still to come. T6 CI qualification, bounded retry policy
+and log trimming pass the local gate. T7 review sizing and finding admission also pass locally. T8 local git workspace contracts pass
+against real temporary bare repositories. T9 supplies the typed harness port, fenced prompts,
+packaged step skills and in-memory fake; the real Codex adapter remains pending. T11 local
+run evidence and usage reports pass their contract tests. T10 requires the dedicated workflow
+login and its live SDK spike before qualification. T12 has a locally proven graph skeleton,
+reconciliation and runtime policies; default compilation refuses the still-missing T13–T16 nodes.
+T5's GitHub adapter passes local checks; its live contract is pending a usable issue-enabled
+sandbox (the existing OpenClaw fixture disables Issues). See decisions D-021/D-022.
+No complete live execution has been qualified yet. See the checked tasks in the plan.
 
 | Read | For |
 |---|---|
