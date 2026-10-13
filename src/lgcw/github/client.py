@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from githubkit import GitHub
 from githubkit.auth import TokenAuthStrategy
 from githubkit.exception import RequestFailed
+from pydantic import BaseModel
 
 from lgcw.clock import Clock, SystemClock
 from lgcw.github.port import GitHubPort, ResolveReason, TokenProvider
@@ -70,6 +71,23 @@ query($id:ID!,$cursor:String) {
   } }
 }
 """
+
+
+def _rest_data(model: BaseModel) -> dict[str, Any]:
+    # githubkit's UNSET defaults serialize as strings unless explicitly excluded.
+    return model.model_dump(mode="json", exclude_unset=True)
+
+
+def _review_from_rest(raw: dict[str, Any]) -> PrReview | None:
+    if raw.get("state") == "PENDING" or raw.get("submitted_at") is None:
+        return None
+    return PrReview(
+        id=raw["id"],
+        author=_author(raw.get("user")),
+        body=raw.get("body") or "",
+        head_sha=raw.get("commit_id"),
+        submitted_at=raw["submitted_at"],
+    )
 
 
 def _author(value: dict[str, Any] | None) -> str:
@@ -210,7 +228,7 @@ class GitHubClient(GitHubPort):
         """Read the complete issue snapshot and PR-discrimination flag."""
         owner, repo = ref.repo.split("/", 1)
         response = await self._sdk().rest.issues.async_get(owner, repo, ref.number)
-        return issue_from_rest(ref.repo, response.parsed_data.model_dump(mode="json"))
+        return issue_from_rest(ref.repo, _rest_data(response.parsed_data))
 
     async def list_issue_comments(self, repo: str, number: int) -> list[IssueComment]:
         """Read all conversation comment pages."""
@@ -226,7 +244,7 @@ class GitHubClient(GitHubPort):
         return [
             IssueComment(
                 id=item.id,
-                author=_author(item.model_dump(mode="json").get("user")),
+                author=_author(_rest_data(item).get("user")),
                 body=item.body or "",
                 created_at=item.created_at,
             )
@@ -240,7 +258,7 @@ class GitHubClient(GitHubPort):
             response = await self._sdk().rest.issues.async_create_comment(
                 owner, name, number, data={"body": body}
             )
-        raw = response.parsed_data.model_dump(mode="json")
+        raw = _rest_data(response.parsed_data)
         return IssueComment(
             id=raw["id"],
             author=_author(raw.get("user")),
@@ -390,17 +408,9 @@ class GitHubClient(GitHubPort):
             per_page=100,
         )
         async for item in items:
-            raw = item.model_dump(mode="json")
-            if raw.get("submitted_at") is not None:
-                reviews.append(
-                    PrReview(
-                        id=raw["id"],
-                        author=_author(raw.get("user")),
-                        body=raw.get("body") or "",
-                        head_sha=raw["commit_id"],
-                        submitted_at=raw["submitted_at"],
-                    )
-                )
+            receipt = _review_from_rest(_rest_data(item))
+            if receipt is not None:
+                reviews.append(receipt)
         return reviews
 
     async def list_review_threads(self, repo: str, number: int) -> list[ReviewThread]:
@@ -446,7 +456,7 @@ class GitHubClient(GitHubPort):
         owner, name = repo.split("/", 1)
         sdk = self._sdk()
         return [
-            _run_from_rest(item.model_dump(mode="json"))
+            _run_from_rest(_rest_data(item))
             async for item in sdk.rest.paginate(
                 sdk.rest.actions.async_list_workflow_runs_for_repo,
                 lambda response: response.parsed_data.workflow_runs,
@@ -473,8 +483,8 @@ class GitHubClient(GitHubPort):
             filter_="latest",
             per_page=100,
         ):
-            raw = item.model_dump(mode="json")
-            raw["workflow_name"] = run.name or run.path
+            raw = _rest_data(item)
+            raw["workflow_name"] = _run_from_rest(_rest_data(run)).workflow
             raw["run_attempt"] = raw.get("run_attempt") or run.run_attempt
             annotations: list[dict[str, Any]] = []
             if raw.get("conclusion") in {"failure", "cancelled", "timed_out"} and raw.get(
@@ -482,7 +492,7 @@ class GitHubClient(GitHubPort):
             ):
                 check_id = int(urlsplit(raw["check_run_url"]).path.rstrip("/").rsplit("/", 1)[-1])
                 annotations = [
-                    annotation.model_dump(mode="json")
+                    _rest_data(annotation)
                     async for annotation in sdk.rest.paginate(
                         sdk.rest.checks.async_list_annotations,
                         lambda response: response.parsed_data,
@@ -523,6 +533,6 @@ class GitHubClient(GitHubPort):
             status="completed",
             per_page=100,
         ):
-            if item.name == workflow:
+            if _run_from_rest(_rest_data(item)).workflow == workflow:
                 return await self.jobs_for_run(repo, item.id)
         return []

@@ -25,6 +25,7 @@ async def scenario_issue_comments_round_trip(
     """Create a comment and read its authoritative identity and body back."""
     issue = await github.get_issue(target.issue)
     assert (issue.repo, issue.number) == (target.issue.repo, target.issue.number)
+    assert not issue.is_pull_request
     login = await github.viewer_login()
     comment = await github.create_issue_comment(
         issue.repo, issue.number, "lgcw contract: comment\n-builder"

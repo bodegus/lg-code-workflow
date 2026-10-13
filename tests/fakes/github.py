@@ -283,12 +283,12 @@ class FakeGitHub(GitHubPort):
         )
         threads = self.threads.get((repo, number), [])
         for index, thread in enumerate(threads):
-            if any(comment.id == comment_id for comment in thread.comments):
+            if thread.comments and thread.comments[0].id == comment_id:
                 reply = ThreadComment(id=self._comment_id(), author=self.login, body=body)
                 threads[index] = thread.model_copy(update={"comments": (*thread.comments, reply)})
                 self._finish("reply_to_review_comment")
                 return
-        raise KeyError(comment_id)
+        raise ValueError("reply target must be a thread root comment")
 
     async def resolve_thread(self, node_id: str, reason: ResolveReason) -> None:
         """Resolve one thread and record the logical disposition."""

@@ -57,7 +57,7 @@ class PrReview(Strict):
     id: int
     author: str
     body: str
-    head_sha: str
+    head_sha: str | None
     submitted_at: datetime
 
 

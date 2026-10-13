@@ -161,3 +161,15 @@ async def test_scripted_ci_tracks_fake_clock() -> None:
 def test_port_and_fake_have_no_merge_operation() -> None:
     assert not hasattr(GitHubPort, "merge")
     assert not hasattr(FakeGitHub, "merge")
+
+
+@pytest.mark.unit
+async def test_reply_to_reply_is_rejected(github: FakeGitHub, target: GitHubContractTarget) -> None:
+    pr = await scenario_draft_pr_then_ready(github, target)
+    await scenario_review_thread_reply_and_resolve(github, target, pr)
+    thread = (await github.list_review_threads(target.issue.repo, pr.number))[0]
+    with pytest.raises(ValueError, match="root"):
+        await github.reply_to_review_comment(
+            target.issue.repo, pr.number, thread.comments[-1].id, "invalid"
+        )
+    assert len((await github.list_review_threads(target.issue.repo, pr.number))[0].comments) == 2
