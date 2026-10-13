@@ -366,7 +366,9 @@ owner in the summary, not looped on. The builder answers each blocking finding w
 
 `classify(required, runs, jobs, pr, pushed_sha, pushed_at, now, limits) -> (CiStatus, failing_jobs)` (pure).
 Required checks are `(workflow name, job name)` pairs from repo config, unioned with any the
-repository's rulesets report. States: `pending` (no checks yet, or required not reported, or running),
+repository's rulesets and classic branch protection report. The same effective union reaches
+both classify and decide. Unknown contexts remain required; an unsupported pinned external
+check app asks rather than accepting a same-named Actions job (D-036). States: `pending` (no checks yet, or required not reported, or running),
 `success`, `failure`, `blocked` (cancelled or stale without a timeout annotation), `missing` (nothing
 after `ci_start_grace_s`, default 600), `conflict`, `head_moved`, `timeout` (past `ci_deadline_s`,
 default 5,400). Poll interval starts at 15 s and doubles to 120 s; a heartbeat each round.
@@ -399,6 +401,13 @@ after a fix → fresh builder once, then ask. Trimmed log for the builder: job a
 code, failure annotations, about 60 lines from the first error match, the last 200 lines of the
 failing step, ANSI codes and timestamps stripped, capped at 8 KB per job and 16 KB in total; the full
 log is saved to the run folder.
+
+Rerun requests have an exact head/run/from-attempt intent and acceptance receipt. A missing
+receipt is recovered only by a newer observed attempt; otherwise the durable grace/deadline
+ends in an owner question, never another automatic dispatch. CI markers include attempt identity.
+Failure feedback is retained before the fix decision, selected failing job first, within the
+8 KB/job and 16 KB aggregate bounds. Runner annotations may qualify infra without a job log;
+application prose alone cannot. See D-036.
 
 ## 9. Data model (Pydantic v2)
 

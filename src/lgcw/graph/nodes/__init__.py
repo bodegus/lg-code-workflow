@@ -9,6 +9,7 @@ from lgcw.graph.context import NodeFn
 from lgcw.graph.nodes.ask import ask
 from lgcw.graph.nodes.blocked import blocked
 from lgcw.graph.nodes.build import build
+from lgcw.graph.nodes.ci_wait import ci_wait
 from lgcw.graph.nodes.gate import gate
 from lgcw.graph.nodes.intake import intake
 from lgcw.graph.nodes.open_pr import open_pr
@@ -26,5 +27,6 @@ DEFAULT_NODES: Mapping[Step, NodeFn] = MappingProxyType(
         "build": build,
         "gate": gate,
         "publish": publish,
+        "ci_wait": ci_wait,
     }
 )

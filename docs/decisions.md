@@ -868,3 +868,42 @@ our own code. Research references point into [research/](research/).
   source-copy mutants are recorded in docs/validation/2026-10-13-t14-r1.md and the PR. No new
   dependency or paid/live call is needed for these corrections; standard-library bounded I/O
   and D-025's existing git adapter cover the added operations.
+## D-036 — CI observation, required-policy union and rerun intent
+
+- **Decided:** T15, 2026-10-13. The CI node contains no LLM dispatch. Poll exact-head latest
+  workflow attempts with 15/30/60/120-second backoff and a heartbeat. Deadlines/grace use the
+  durable pushed comment timestamp, so restarting does not reset them. Closed/foreign heads stop.
+- **Required policy:** union configured workflow/job pairs with applicable branch-ruleset and
+  classic-protection context names. Bind names to observed jobs; before a name appears, include
+  every observed workflow conservatively so approval/startup blocks remain visible. An unknown
+  required name never becomes green. Pass the identical union to both classify and decide.
+  External check apps cannot be proven by Actions jobs; fail closed with owner attention when
+  protection pins another app. GET /apps/github-actions returned id 15368 / slug github-actions
+  on github.com. This adapter supports github.com, not a claim of GHES app identity.
+- **SDK ladder:** D-008's githubkit 0.16.1 already exposes typed async_get_branch_rules (pagination)
+  and async_get_status_checks_protection. Their generated v2026_03_10 schemas include context and
+  integration/app IDs. Use these public SDK operations, not a new HTTP client or custom API.
+  Classic protection 404 is the endpoint's absence response; other failures propagate, never
+  become an empty policy. Required-policy mapping is tested with the pinned generated models.
+- **Reruns:** record the CI decision then a rerun intent for exact head/run/from-attempt before
+  dispatch; record accepted afterward. After process loss, a strictly newer attempt recovers an
+  unknown request. Without a newer attempt, wait only the existing grace/deadline, then ask for
+  manual Actions inspection/start and explicit workflow retry. Never dispatch the unknown request
+  twice. Counts remain PR-derived, per class/head and per PR; CI markers include observed attempt
+  identity so distinct allowed reruns cannot collapse into one fact.
+- **Evidence:** authoritative runner annotations need no downloadable log (a failed acquisition
+  may have none). Other logs are redacted, retained and trimmed. Builder feedback includes the
+  selected failure first, at most 8 KB per job and 16 KB total. Retain feedback before the fix
+  decision, so a crash cannot resume with only a lossy generic message. Missing/expired GitHub
+  logs preserve available job/annotation evidence, not a fabricated test result.
+- **Infrastructure carry-forward (PR2 R2-X1):** runner/action/image-download patterns count only
+  in service annotations or an actual failed setup step. Application test prose cannot authorize
+  an infrastructure rerun. Network errors likewise require failed setup-step evidence.
+- **Repeated CI fixes:** the builder compares durable CI feedback fingerprints across published
+  heads. The second same failure gets one fresh builder per cause; its recurrence asks. A scoped
+  owner retry can grant one more CI fix, but does not waive rerun caps.
+- **Qualification:** named CI graph tests, four comment-response crash boundaries, unknown intent
+  with manual next-attempt recovery, ruleset-only approval/missing checks, app identity rejection,
+  infrastructure-prose regressions; actual output in the PR. Read-only live policy discovery
+  returned no required contexts for both authorized repos. T16 review/merge-ready remains an
+  explicit unit checkpoint; no complete real workflow is claimed here.

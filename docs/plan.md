@@ -508,11 +508,11 @@ and WorkspacePort with owned restoration and an optional immutable push SHA (D-0
 **Interfaces:**
 - Consumes: `classify`, `decide`, `trim_job_log`, `failure_fingerprint` (T6); `FakeGitHub.script_runs`, `FakeClock`.
 
-- [ ] **Step 1: Write the failing tests**: `test_pending_then_success_goes_to_review`, `test_change_failure_sends_trimmed_log_to_builder`, `test_same_ci_failure_after_fix_restarts_then_asks`, `test_infra_rerun_once_then_success` (exactly one `rerun_failed_jobs` call), `test_pre_existing_failure_moves_on_with_note` (base job fails the same step), `test_missing_after_grace_asks`, `test_deadline_asks`, `test_decision_reused_after_crash` (no duplicate `ci` marker or rerun), `test_rerun_cap_per_pr`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the poll loop (`clock.sleep`, heartbeat, deadline) and actions.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(graph): CI wait and fix-or-move-on`.
+- [x] **Step 1: Write the failing tests**: `test_pending_then_success_goes_to_review`, `test_change_failure_sends_trimmed_log_to_builder`, `test_same_ci_failure_after_fix_restarts_then_asks`, `test_infra_rerun_once_then_success` (exactly one `rerun_failed_jobs` call), `test_pre_existing_failure_moves_on_with_note` (base job fails the same step), `test_missing_after_grace_asks`, `test_deadline_asks`, `test_decision_reused_after_crash` (no duplicate `ci` marker or rerun), `test_rerun_cap_per_pr`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** the poll loop (`clock.sleep`, heartbeat, deadline) and actions.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(graph): CI wait and fix-or-move-on`.
 
 ### Task T16: Nodes — review (with verify) and merge_ready
 

@@ -51,8 +51,12 @@ def _job_rule(
 ) -> tuple[CiClass, CiAction]:
     evidence = "\n".join((*job.annotations, log))
     baseline = [other for other in base if (other.workflow, other.name) == (job.workflow, job.name)]
-    if any(pattern.search(evidence) for pattern in INFRA_PATTERNS) or (
-        any(SETUP_STEP.search(step) for step in job.failed_steps) and NETWORK_ERROR.search(evidence)
+    infra_evidence = "\n".join(job.annotations)
+    setup_failed = any(SETUP_STEP.search(step) for step in job.failed_steps)
+    if (
+        any(pattern.search(infra_evidence) for pattern in INFRA_PATTERNS)
+        or (setup_failed and any(pattern.search(log) for pattern in INFRA_PATTERNS))
+        or (setup_failed and NETWORK_ERROR.search(evidence))
     ):
         return "infra", "rerun"
     if job.conclusion == "timed_out" or TIMEOUT_ANNOTATION.search(evidence):

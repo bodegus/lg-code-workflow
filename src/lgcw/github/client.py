@@ -15,7 +15,7 @@ from githubkit.exception import RequestFailed
 from pydantic import BaseModel
 
 from lgcw.clock import Clock, SystemClock
-from lgcw.github.port import GitHubPort, ResolveReason, TokenProvider
+from lgcw.github.port import GitHubPort, RequiredPolicyError, ResolveReason, TokenProvider
 from lgcw.live import require_live
 from lgcw.models.github import (
     IssueComment,
@@ -77,6 +77,24 @@ query($id:ID!,$cursor:String) {
 def _rest_data(model: BaseModel) -> dict[str, Any]:
     # githubkit's UNSET defaults serialize as strings unless explicitly excluded.
     return model.model_dump(mode="json", exclude_unset=True)
+
+
+def _required_context(raw: dict[str, Any], app_key: str) -> str:
+    # Verified with GET /apps/github-actions on github.com, 2026-10-13. This adapter
+    # currently targets github.com; external check apps cannot be qualified by Actions jobs.
+    if raw.get(app_key) not in {None, -1, 15368}:
+        raise RequiredPolicyError(
+            "unsupported required-check app; owner must qualify that external check"
+        )
+    return str(raw["context"])
+
+
+def required_contexts_from_rule(raw: dict[str, Any]) -> tuple[str, ...]:
+    """Extract required contexts from a validated SDK rule; missing policy fails closed."""
+    if raw.get("type") != "required_status_checks":
+        return ()
+    checks = raw["parameters"]["required_status_checks"]
+    return tuple(_required_context(check, "integration_id") for check in checks)
 
 
 def _review_from_rest(raw: dict[str, Any]) -> PrReview | None:
@@ -553,9 +571,14 @@ class GitHubClient(GitHubPort):
     async def job_log(self, repo: str, job_id: int) -> str:
         """Read the downloaded log; callers redact before storing it."""
         owner, name = repo.split("/", 1)
-        response = await self._sdk().rest.actions.async_download_job_logs_for_workflow_run(
-            owner, name, job_id
-        )
+        try:
+            response = await self._sdk().rest.actions.async_download_job_logs_for_workflow_run(
+                owner, name, job_id
+            )
+        except RequestFailed as error:
+            if error.response.status_code not in {404, 409, 410}:
+                raise
+            return "Job log unavailable from GitHub; use job steps and annotations."
         return response.text
 
     async def rerun_failed_jobs(self, repo: str, run_id: int) -> None:
@@ -581,3 +604,28 @@ class GitHubClient(GitHubPort):
             if _run_from_rest(_rest_data(item)).workflow == workflow:
                 return await self.jobs_for_run(repo, item.id)
         return []
+
+    async def required_check_contexts(self, repo: str, branch: str) -> tuple[str, ...]:
+        """Union paginated applicable ruleset contexts and classic branch protection."""
+        owner, name = repo.split("/", 1)
+        sdk = self._sdk()
+        contexts: set[str] = set()
+        async for rule in sdk.rest.paginate(
+            sdk.rest.repos.async_get_branch_rules,
+            lambda response: response.parsed_data,
+            owner=owner,
+            repo=name,
+            branch=branch,
+            per_page=100,
+        ):
+            contexts.update(required_contexts_from_rule(_rest_data(rule)))
+        try:
+            response = await sdk.rest.repos.async_get_status_checks_protection(owner, name, branch)
+        except RequestFailed as error:
+            if error.response.status_code != 404:
+                raise
+        else:
+            raw = _rest_data(response.parsed_data)
+            contexts.update(raw.get("contexts", ()))
+            contexts.update(_required_context(check, "app_id") for check in raw.get("checks", ()))
+        return tuple(sorted(contexts))

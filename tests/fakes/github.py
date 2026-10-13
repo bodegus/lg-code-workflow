@@ -38,6 +38,7 @@ class FakeGitHub(GitHubPort):
         self.threads: dict[tuple[str, int], list[ReviewThread]] = {}
         self.reviews: dict[tuple[str, int], list[PrReview]] = {}
         self.resolutions: dict[str, ResolveReason] = {}
+        self.required_contexts: dict[tuple[str, str], tuple[str, ...]] = {}
         self.runs: dict[str, list[RunView]] = {}
         self.jobs: dict[int, list[JobView]] = {}
         self.logs: dict[int, str] = {}
@@ -384,4 +385,11 @@ class FakeGitHub(GitHubPort):
         self._record("latest_base_jobs", repo=repo, workflow=workflow, branch=branch)
         result = list(self.base_jobs.get((repo, workflow, branch), []))
         self._finish("latest_base_jobs")
+        return result
+
+    async def required_check_contexts(self, repo: str, branch: str) -> tuple[str, ...]:
+        """Return trusted fixture ruleset/classic-protection check contexts."""
+        self._record("required_check_contexts", repo=repo, branch=branch)
+        result = self.required_contexts.get((repo, branch), ())
+        self._finish("required_check_contexts")
         return result

@@ -17,6 +17,11 @@ from lgcw.models.github import (
 )
 from lgcw.models.issue import IssueRef, IssueSnapshot
 
+
+class RequiredPolicyError(ValueError):
+    """Required policy cannot be proven through the Actions-only CI boundary."""
+
+
 type ResolveReason = Literal["ADDRESSED", "WONT_FIX", "INVALID"]
 
 
@@ -136,4 +141,8 @@ class GitHubPort(Protocol):
 
     async def latest_base_jobs(self, repo: str, workflow: str, branch: str) -> list[JobView]:
         """Read the latest completed base push run's jobs for a workflow."""
+        ...
+
+    async def required_check_contexts(self, repo: str, branch: str) -> tuple[str, ...]:
+        """Read required check names from applicable branch rules and classic protection."""
         ...
