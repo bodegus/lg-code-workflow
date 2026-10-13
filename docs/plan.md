@@ -128,7 +128,7 @@ def test_isolated_env_removes_tokens() -> None:
   - State (mutable model, `frozen=False`): `Step = Literal["reconcile", "intake", "open_pr", "build", "gate", "publish", "ci_wait", "review", "merge_ready", "ask", "blocked", "end"]`, `RunOutcome = Literal["merge_ready", "waiting", "blocked", "closed", "error"]`, `Feedback(source: Literal["gate", "ci", "review", "owner", "no_changes"], summary: str, data: str | None, fingerprint: str | None)`, `PendingAsk(question: str, return_to: Step, code: str)`, `RunState` (fields: `issue_ref`, `issue`, `intake`, `branch`, `base_sha`, `pr`, `ledger`, `threads`, `builder_session`, `handoff`, `feedback`, `ci`, `level`, `gated`, `last_reviewed_sha`, `ask`, `owner_answer`, `next_step`, `outcome`; counters are derived, not stored).
   - `Clock` Protocol (`now() -> datetime`, `async sleep(seconds: float) -> None`), `SystemClock`; `tests.fakes.clock.FakeClock(start: datetime)` whose `sleep` advances `now()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 def test_strict_schema_build_handoff_is_strict():
@@ -163,10 +163,10 @@ def test_issue_ref_parse():
 ```
 (all marked `@pytest.mark.unit`)
 
-- [ ] **Step 2: Run** `uv run pytest tests/unit/models -m unit` → FAIL (import errors).
-- [ ] **Step 3: Implement the models** in the listed modules; `strict_json_schema` walks `$defs` and every object schema.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(models): core Pydantic models and strict output schemas`.
+- [x] **Step 2: Run** `uv run pytest tests/unit/models -m unit` → FAIL (import errors).
+- [x] **Step 3: Implement the models** in the listed modules; `strict_json_schema` walks `$defs` and every object schema.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(models): core Pydantic models and strict output schemas`.
 
 ### Task T2: Configuration loading
 

@@ -157,3 +157,29 @@ our own code. Research references point into [research/](research/).
   module and functional commands belong to T17, so T0 does not claim `lgcw doctor` works.
 - **Revisit when:** a dependency or action upgrade requires a different Python/runtime version,
   or the actual T17 CLI needs a different entry point.
+
+## D-017 T1 model boundaries and output-schema validation
+
+- **Decided:** 2026-10-13, T1 builder. All boundary models inherit Pydantic `Strict` with
+  `extra="forbid", frozen=True`; only graph state permits reassignment, with assignment validation.
+  Agent outputs require every field, including nullable ones, and have no defaults.
+- **Schema checker:** validate Pydantic's generated schema recursively through definitions,
+  properties, compositions, arrays and conditional schema nodes. Required nullable fields are
+  valid; defaults and objects that permit extra properties are rejected. A field named `default`
+  is valid when it does not supply a schema default.
+- **Shared names:** `Step` is defined alongside `Strict` in `models/base.py` and re-exported from
+  its binding module `models/state.py`, so ledger question markers and state use the same type
+  without a state/ledger import cycle. No public binding name in the plan changes.
+- **Review with no lenses:** `ReviewMarker.review_id` is required but nullable, so the `none`
+  review level can record a round without inventing a GitHub review ID.
+- **Limits:** explicit run/idle timeout fields per role use the design's exact defaults;
+  round caps and counts cannot be negative, and context-restart ratio must be in (0, 1].
+  One-based ordered line ranges and bounded priorities/confidences reject malformed findings.
+- **Dependency check:** no added packages; only already-approved Pydantic and standard-library
+  typing, datetime, pathlib and asyncio. Ledger methods and counters remain T3; configuration
+  loading and repository lookup remain T2. Live adapters and workflow execution remain unbuilt.
+- **Evidence:** T1's initial imports fail as expected; its model tests exercise strict schemas,
+  validation, marker discrimination, round trips, mutable state, diff accounting and both clocks.
+  Final full-gate proof will be recorded in this PR before T1 is marked complete.
+- **Revisit when:** a pinned SDK rejects these schemas or later task integration demonstrates
+  a missing boundary field; record any interface change before dependent tasks consume it.
