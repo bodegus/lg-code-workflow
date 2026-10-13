@@ -342,3 +342,57 @@ async def test_local_clone_without_remote_branch_is_not_resumed(tmp_path: Path) 
     workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
     await workspace.prepare(policy(), ISSUE, BRANCH)
     assert not (await workspace.prepare(policy(), ISSUE, BRANCH)).resumed
+
+
+@pytest.mark.unit
+async def test_worktree_fingerprint_binds_bytes_and_survives_commit(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "state", origin=remote.bare)
+    info = await workspace.prepare(
+        policy(), IssueRef(repo="fixture/sandbox", number=7), "lgcw/issue-7"
+    )
+    (info.repo_dir / "app.py").write_text("VERSION = '0.1.1'\n")
+    before = await workspace.worktree_fingerprint(remote.base)
+    (info.repo_dir / "app.py").write_text("VERSION = '0.1.2'\n")
+    changed = await workspace.worktree_fingerprint(remote.base)
+    assert before != changed
+    (info.repo_dir / "new.txt").write_text("new\n")
+    untracked = await workspace.worktree_fingerprint(remote.base)
+    await workspace.commit_all("fixture", {})
+    assert await workspace.worktree_fingerprint(remote.base) == untracked
+    assert await workspace.commit_fingerprint(remote.base, await workspace.head_sha()) == untracked
+
+
+@pytest.mark.unit
+async def test_redacted_machine_path_cannot_bypass_symlink_guard(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "state", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("public synthetic fixture\n")
+    name = "ghp_" + "x" * 36 + ".py"
+    (info.repo_dir / name).symlink_to(outside)
+    with pytest.raises(ValueError, match="redacted|symlink"):
+        await workspace.changed_paths(remote.base)
+
+
+@pytest.mark.unit
+async def test_gate_failure_fingerprint_ignores_volatile_paths_and_times(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "state", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    error = info.repo_dir / "gate-error.txt"
+    error.write_text("AssertionError at /tmp/attempt-123: failed in 1.23 seconds\n")
+    first = await workspace.run_commands(
+        info.repo_dir, ("cat gate-error.txt; exit 1",), 5, tmp_path / "first.log"
+    )
+    error.write_text("AssertionError at /tmp/attempt-456: failed in 2.34 seconds\n")
+    second = await workspace.run_commands(
+        info.repo_dir, ("cat gate-error.txt; exit 1",), 5, tmp_path / "second.log"
+    )
+    assert first.fingerprint == second.fingerprint
+    error.write_text("TypeError: a genuinely different failure\n")
+    different = await workspace.run_commands(
+        info.repo_dir, ("cat gate-error.txt; exit 1",), 5, tmp_path / "different.log"
+    )
+    assert first.fingerprint != different.fingerprint

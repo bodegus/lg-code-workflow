@@ -87,6 +87,14 @@ class WorkspacePort(Protocol):
         """Return all changed paths including untracked files."""
         ...
 
+    async def worktree_fingerprint(self, base_sha: str) -> str:
+        """Bind actual changed file bytes/modes to a base, stable before and after commit."""
+        ...
+
+    async def commit_fingerprint(self, base_sha: str, head_sha: str) -> str:
+        """Bind immutable committed bytes/modes to the measured gate's base."""
+        ...
+
     async def commit_all(self, message: str, trailers: Mapping[str, str]) -> str | None:
         """Commit all changed files, returning None when clean."""
         ...

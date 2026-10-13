@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 
 from lgcw.ledger.ledger import build_ledger
-from lgcw.ledger.markers import render_marker
+from lgcw.ledger.markers import parse_markers, render_marker
 from lgcw.models.github import IssueComment, PrDocument
 from lgcw.models.ledger import CiMarker, ReadyMarker, RunMarker
 from tests.unit.ci.cases import NOW, SHA
@@ -74,3 +74,15 @@ def test_identical_run_copies_dedupe_but_distinct_reruns_remain() -> None:
     runs = ledger.of_kind("run")
     assert len(runs) == 1 and runs[0].comment_id == 20 and runs[0].where == "pr"
     assert len(ledger.of_kind("ci")) == ledger.counts().reruns_total == 2
+
+
+@pytest.mark.unit
+def test_body_effect_metadata_does_not_duplicate_canonical_run() -> None:
+    bound = RUN.model_copy(
+        update={"body_operation_id": "publish-op", "body_head_sha": SHA, "body_step": "publish"}
+    )
+    ledger = build_ledger(
+        [comment(10, render_marker(RUN))], [], [], "bot", pr_document=document(render_marker(bound))
+    )
+    assert len(ledger.of_kind("run")) == 1
+    assert parse_markers(document(render_marker(bound)).body)[0] == bound

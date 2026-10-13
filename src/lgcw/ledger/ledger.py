@@ -75,7 +75,9 @@ def build_ledger(
     runs: set[str] = set()
     for entry in reversed(entries):
         if isinstance(entry.marker, RunMarker):
-            key = entry.marker.model_dump_json()
+            key = entry.marker.model_dump_json(
+                exclude={"body_operation_id", "body_head_sha", "body_step"}
+            )
             if key in runs:
                 continue
             runs.add(key)

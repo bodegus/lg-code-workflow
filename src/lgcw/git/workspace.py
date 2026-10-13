@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import shutil
+import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -11,10 +14,10 @@ from uuid import uuid4
 
 from pydantic import SecretStr
 
+from lgcw.ci.logs import failure_fingerprint
 from lgcw.git.port import CommandResult, PushAuth, PushRejectedError, WorkspaceInfo, WorkspacePort
 from lgcw.git.run import git, run_process
 from lgcw.github.port import TokenProvider
-from lgcw.ledger.markers import fingerprint
 from lgcw.live import require_live
 from lgcw.models.config import RepoConfig
 from lgcw.models.issue import IssueRef
@@ -32,6 +35,26 @@ def _instruction(path: str) -> bool:
     return any(part in {".agents", ".claude", ".codex"} for part in parts) or (
         parts[-1] in {"agents.md", "agents.override.md", "claude.md"}
     )
+
+
+def _file_fingerprint(root: Path, base_sha: str, paths: Sequence[str]) -> str:
+    """Hash actual bytes/modes with the same representation for worktrees and audit clones."""
+    records: list[tuple[str, str, str]] = []
+    for name in sorted(paths):
+        path = root / name
+        if path.is_symlink():
+            mode, digest = "symlink", hashlib.sha256(str(path.readlink()).encode()).hexdigest()
+        elif path.is_file():
+            mode = "executable" if path.stat().st_mode & 0o111 else "file"
+            with path.open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        elif not path.exists():
+            mode, digest = "deleted", ""
+        else:
+            raise ValueError("changed path is not a regular file or symlink")
+        records.append((name, mode, digest))
+    payload = json.dumps([_sha(base_sha), records], separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 class GitWorkspace(WorkspacePort):
@@ -74,7 +97,10 @@ class GitWorkspace(WorkspacePort):
         return result.out.rstrip("\n")
 
     async def _paths(self, cwd: Path, *args: str) -> tuple[str, ...]:
-        return tuple(path for path in (await self._checked(cwd, *args)).split("\0") if path)
+        data = await self._checked(cwd, *args)
+        if "[REDACTED]" in data:
+            raise ValueError("redacted Git machine paths are ambiguous; refusing filesystem access")
+        return tuple(path for path in data.split("\0") if path)
 
     async def _safe_links(self, cwd: Path) -> None:
         paths = await self._paths(
@@ -238,7 +264,7 @@ class GitWorkspace(WorkspacePort):
             command=redact(command),
             code=code,
             tail=tail,
-            fingerprint=fingerprint(command, tail) if code else None,
+            fingerprint=failure_fingerprint("local", "gate", command, tail) if code else None,
             duration_s=time.monotonic() - started,
             log_path=log_path,
         )
@@ -274,6 +300,48 @@ class GitWorkspace(WorkspacePort):
         )
         untracked = await self._paths(cwd, "ls-files", "--others", "--exclude-standard", "-z")
         return tuple(dict.fromkeys((*changed, *untracked)))
+
+    async def worktree_fingerprint(self, base_sha: str) -> str:
+        """Hash actual changed bytes and executable/symlink modes, checking config first."""
+        info = self._prepared()
+        if self._repo is None:
+            raise ValueError("workspace policy missing")
+        url = (
+            str(self._origin)
+            if self._origin is not None
+            else (f"https://github.com/{self._repo.full_name}.git")
+        )
+        await self._trusted_config(info.repo_dir, url, self._repo, info.branch)
+        return _file_fingerprint(info.repo_dir, base_sha, await self.changed_paths(base_sha))
+
+    async def commit_fingerprint(self, base_sha: str, head_sha: str) -> str:
+        """Hash an immutable commit in a private audit clone, independent of live local edits."""
+        info = self._prepared()
+        await self.worktree_fingerprint(base_sha)  # validate original config and links first
+        with tempfile.TemporaryDirectory(prefix="commit-check-", dir=info.repo_dir.parent) as name:
+            audit = Path(name) / "repo"
+            await self._checked(
+                info.repo_dir.parent,
+                "clone",
+                "--shared",
+                "--no-checkout",
+                "--",
+                str(info.repo_dir),
+                str(audit),
+            )
+            await self._checked(audit, "checkout", "--detach", _sha(head_sha))
+            await self._safe_links(audit)
+            paths = await self._paths(
+                audit,
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                _sha(base_sha),
+                _sha(head_sha),
+                "--",
+            )
+            return _file_fingerprint(audit, base_sha, paths)
 
     async def _commit(self, message: str, *, empty: bool = False) -> str:
         cwd = self._prepared().repo_dir

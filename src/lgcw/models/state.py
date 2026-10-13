@@ -9,6 +9,7 @@ from pydantic import ConfigDict, Field
 from lgcw.models.base import Step as Step
 from lgcw.models.base import Strict
 from lgcw.models.ci import CiDecision
+from lgcw.models.feedback import Feedback as Feedback
 from lgcw.models.github import PrSnapshot, ReviewThread
 from lgcw.models.handoff import BuildHandoff
 from lgcw.models.harness import SessionRef
@@ -17,15 +18,6 @@ from lgcw.models.ledger import Command, PrLedger
 from lgcw.models.review import GateResult, LevelDecision
 
 type RunOutcome = Literal["merge_ready", "waiting", "blocked", "closed", "error"]
-
-
-class Feedback(Strict):
-    """Code-produced feedback for a subsequent builder turn."""
-
-    source: Literal["gate", "ci", "review", "owner", "no_changes"]
-    summary: str
-    data: str | None
-    fingerprint: str | None
 
 
 class PendingAsk(Strict):

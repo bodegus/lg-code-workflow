@@ -101,3 +101,44 @@ async def test_native_force_lease_rejects_stale_head(tmp_path: Path) -> None:
     )
     assert result.code != 0 and "stale info" in result.err
     assert await checked(remote.bare, "rev-parse", branch) == owner_head
+
+
+@pytest.mark.unit
+async def test_success_kills_background_process_group(tmp_path: Path) -> None:
+    from lgcw.git.run import run_process
+
+    result = await run_process(
+        ("/bin/sh", "-c", "(sleep 0.3; touch escaped) >/dev/null 2>&1 & exit 0"), cwd=tmp_path
+    )
+    assert result.code == 0
+    await asyncio.sleep(0.5)
+    assert not (tmp_path / "escaped").exists()
+
+
+@pytest.mark.unit
+async def test_timeout_does_not_wait_on_escaped_child_pipe(tmp_path: Path) -> None:
+    import os
+    import signal
+    import sys
+
+    from lgcw.git.run import run_process
+
+    # The child leaves the process group and retains stdout. Parent group kill cannot close
+    # that pipe; the runner must bound capture draining independently. Cleanup owns the PID.
+    code = (
+        "import os,time; pid=os.fork(); "
+        "os.setsid() if pid == 0 else None; "
+        "open('child.pid','w').write(str(os.getpid())) if pid == 0 else None; "
+        "time.sleep(10)"
+    )
+    try:
+        async with asyncio.timeout(2):
+            result = await run_process((sys.executable, "-c", code), cwd=tmp_path, timeout_s=0.2)
+        assert result.code == 124
+    finally:
+        pid_file = tmp_path / "child.pid"
+        if pid_file.exists():
+            try:
+                os.kill(int(pid_file.read_text()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass

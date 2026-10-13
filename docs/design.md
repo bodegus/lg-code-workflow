@@ -179,8 +179,11 @@ response was lost is recovered through `list_pr_reviews`, including reviews with
 findings; its body carries the round marker in the original submission (D-020). That marker can
 have a null review ID until GitHub assigns it; the enclosing review receipt provides the actual
 ID without a second event. The builder's Codex thread id is in the `session` marker, so a rerun
-resumes the same thread. These are integration requirements, not qualification of the currently
-implemented pure ledger; D-019 records the remaining pre-publication persistence gaps.
+resumes the same thread. T14 closes the pre-publication gaps with build/gate/publish intent and completion journals
+(D-035). Unknown paid or host-command results ask for an explicit new owner operation rather
+than replaying. Builder handoffs and gate receipts bind actual content; publication independently
+audits immutable committed bytes before pushing. The PR body carries an atomic operation receipt.
+Review/CI integration and real end-to-end qualification remain subsequent tasks.
 
 ## 4. Steps
 
@@ -223,10 +226,16 @@ Step details:
 - **gate.** Protected paths (config `protected_globs`, default `.github/workflows/**`) changed
   without the issue mentioning them → `ask`. Gate commands run on the host in the clone with a
   timeout; failure → feedback to `build` with the trimmed output (max `gate_fix_rounds`, default
-  2). The same failure fingerprint twice → fresh builder once (§6), then `ask`.
+  2). The same failure fingerprint twice → fresh builder once (§6), then `ask`. Before the first
+  command, content must match the builder receipt. Commands must leave identical content;
+  zero exit with altered content records blocking feedback. An unknown command result asks.
+  Explicit owner retry authorizes a new command operation (D-035).
 - **publish.** `git add -A`, commit (message `lgcw: <first summary line> (#<n>)` plus trailers),
   push with `--force-with-lease=<branch>:<last pushed sha>`, render the PR body, write the `push`
-  marker. After a review fix: reply to each finding thread with the builder's disposition and fix
+  marker. Before push, an independent checkout of the immutable candidate must match the gate's
+  byte/mode/path fingerprint; changed work or foreign heads ask. Commit trailers and exact remote
+  SHA recover lost commit/push responses, and the body has an atomic operation receipt (D-035).
+  After a review fix: reply to each finding thread with the builder's disposition and fix
   SHA, then resolve it with the matching reason.
 - **ci_wait.** §8. Never waits on a SHA the workflow did not push.
 - **review.** §7. Runs only after CI is green or "moved on", so no review is spent on code a CI fix

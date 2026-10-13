@@ -11,6 +11,7 @@ from lgcw.models.ledger import (
     Command,
     FindingMarker,
     PrLedger,
+    PublishMarker,
     PushMarker,
     ReadyMarker,
 )
@@ -92,6 +93,15 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
     push = ledger.last_push()
     if push is None:
         return route("open_pr", "recover missing initial push receipt")
+    publication = ledger.latest("publish")
+    if publication is not None and isinstance(publication.marker, PublishMarker):
+        proposed = publication.marker
+        if (
+            proposed.phase == "committed"
+            and pr.head_sha in {proposed.parent_sha, proposed.head_sha}
+            and push.head_sha in {proposed.parent_sha, proposed.head_sha}
+        ):
+            return route("publish", "recover exact journaled publication before CI")
     if pr.head_sha != push.head_sha:
         return ask(
             "head_moved",

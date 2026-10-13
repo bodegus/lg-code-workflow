@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from lgcw.git.port import CommandResult, PushAuth, WorkspaceInfo
@@ -26,6 +26,8 @@ class RecordingWorkspace(GitWorkspace):
         self.pushes: list[str] = []
         self.prepares: list[WorkspaceInfo] = []
         self.empty_commits: list[str] = []
+        self.commits: list[str] = []
+        self.commit_edits: dict[str, str] = {}
         self.command_runs: list[tuple[str, ...]] = []
         self.crash_after: str | None = None
 
@@ -44,6 +46,17 @@ class RecordingWorkspace(GitWorkspace):
         result = await super().commit_empty(message)
         self.empty_commits.append(result)
         self._done("commit_empty")
+        return result
+
+    async def commit_all(self, message: str, trailers: Mapping[str, str]) -> str | None:
+        """Record actual commits and inject loss before the caller's commit receipt."""
+        for name, content in self.commit_edits.items():
+            (self.prepares[-1].repo_dir / name).write_text(content)
+        self.commit_edits.clear()
+        result = await super().commit_all(message, trailers)
+        if result is not None:
+            self.commits.append(result)
+            self._done("commit_all")
         return result
 
     async def push(self, branch: str, expected_remote_sha: str | None, auth: PushAuth) -> str:

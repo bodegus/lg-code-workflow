@@ -9,9 +9,11 @@ from pydantic import Field, model_validator
 
 from lgcw.models.base import Step, Strict
 from lgcw.models.ci import CiAction, CiClass, CiStatus
-from lgcw.models.harness import Role
+from lgcw.models.feedback import Feedback
+from lgcw.models.handoff import BuildHandoff
+from lgcw.models.harness import Role, Usage
 from lgcw.models.issue import IssueSnapshot
-from lgcw.models.review import Lens, ReviewLevel
+from lgcw.models.review import GatedFinding, Lens, ReviewLevel
 
 
 class Command(Strict):
@@ -75,6 +77,19 @@ class RunMarker(Strict):
     initial_sha: str | None = None
     operation_id: str | None = None
     owner_answer: str | None = None
+    body_operation_id: str | None = None
+    body_head_sha: str | None = None
+    body_step: Step | None = None
+
+    @model_validator(mode="after")
+    def coherent_body_receipt(self) -> Self:
+        """An atomic body effect names its operation, exact head and code step together."""
+        values = (self.body_operation_id, self.body_head_sha, self.body_step)
+        if any(value is not None for value in values) and not all(
+            value is not None for value in values
+        ):
+            raise ValueError("incomplete PR body effect receipt")
+        return self
 
 
 class SessionMarker(Strict):
@@ -84,6 +99,107 @@ class SessionMarker(Strict):
     role: Role
     session_id: str
     reason: Literal["initial", "fresh_restart"]
+    cause: str | None = None
+
+
+type BuildSource = Literal["build", "gate_fix", "ci_fix", "review_fix"]
+
+
+class BuildMarker(Strict):
+    """Write-ahead paid dispatch and its recoverable validated handoff/error receipt."""
+
+    kind: Literal["build"] = "build"
+    operation_id: str
+    parent_sha: str
+    session_id: str
+    source: BuildSource
+    publish_source: BuildSource | None = None
+    phase: Literal["intent", "complete"]
+    command_id: int | None
+    handoff: BuildHandoff | None
+    usage: Usage | None
+    tree_fingerprint: str | None
+    feedback: Feedback | None
+    error: str | None
+
+    @model_validator(mode="after")
+    def coherent_phase(self) -> Self:
+        """Admit only empty intents or complete handoff/error receipts."""
+        if self.phase == "intent" and any(
+            value is not None
+            for value in (
+                self.handoff,
+                self.usage,
+                self.tree_fingerprint,
+                self.feedback,
+                self.error,
+            )
+        ):
+            raise ValueError("build intent cannot claim completion")
+        if self.phase == "complete" and (self.handoff is None) == (self.error is None):
+            raise ValueError("build completion needs exactly a handoff or error")
+        if self.handoff is not None and (self.usage is None or self.tree_fingerprint is None):
+            raise ValueError("validated handoff needs measured usage and content fingerprint")
+        return self
+
+
+class GateMarker(Strict):
+    """A journaled gate command and its content-bound measured verdict."""
+
+    kind: Literal["gate"] = "gate"
+    operation_id: str
+    build_id: str
+    parent_sha: str
+    phase: Literal["intent", "complete"]
+    code: int | None
+    fingerprint: str | None
+    tree_fingerprint: str | None
+    feedback: Feedback | None
+
+    @model_validator(mode="after")
+    def coherent_phase(self) -> Self:
+        """Keep unknown command results distinguishable from success."""
+        if self.phase == "intent" and any(
+            value is not None
+            for value in (self.code, self.fingerprint, self.tree_fingerprint, self.feedback)
+        ):
+            raise ValueError("gate intent cannot claim a result")
+        if self.phase == "complete" and (self.code is None or self.tree_fingerprint is None):
+            raise ValueError("gate completion needs code and actual tree fingerprint")
+        if self.phase == "complete" and self.code != 0 and self.feedback is None:
+            raise ValueError("failed gate completion needs actionable feedback")
+        if self.feedback is not None and self.fingerprint != self.feedback.fingerprint:
+            raise ValueError("gate fingerprint differs from its feedback")
+        return self
+
+
+class PublishMarker(Strict):
+    """Commit/push operation identity closes commit-before-receipt and push-before-marker gaps."""
+
+    kind: Literal["publish"] = "publish"
+    operation_id: str
+    build_id: str
+    parent_sha: str
+    head_sha: str | None
+    phase: Literal["intent", "committed", "complete"]
+    source: BuildSource
+    round: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def coherent_phase(self) -> Self:
+        """A commit receipt always names its exact proposed head."""
+        if (self.phase == "intent") != (self.head_sha is None):
+            raise ValueError("publish phase disagrees with committed head")
+        return self
+
+
+class FeedbackMarker(Strict):
+    """Durable code feedback and exact open findings for CI/review fix recovery."""
+
+    kind: Literal["feedback"] = "feedback"
+    head_sha: str
+    feedback: Feedback
+    findings: tuple[GatedFinding, ...] = ()
 
 
 class PushMarker(Strict):
@@ -189,7 +305,11 @@ type Marker = Annotated[
     | IntakeMarker
     | BootstrapMarker
     | SetupMarker
-    | CommandDoneMarker,
+    | CommandDoneMarker
+    | BuildMarker
+    | GateMarker
+    | PublishMarker
+    | FeedbackMarker,
     Field(discriminator="kind"),
 ]
 
@@ -301,8 +421,15 @@ class PrLedger(Strict):
                 review_rounds += 1
             elif isinstance(marker, SessionMarker) and marker.reason == "fresh_restart":
                 fresh_restarts += 1
+        gate_attempts = {
+            entry.marker.operation_id
+            for entry in self.entries
+            if isinstance(entry.marker, BuildMarker)
+            and entry.marker.phase == "intent"
+            and entry.marker.source == "gate_fix"
+        }
         return LedgerCounts(
-            gate_fix_rounds=gate_fixes,
+            gate_fix_rounds=max(gate_fixes, len(gate_attempts)),
             ci_fix_rounds=ci_fixes,
             review_fix_rounds=review_fixes,
             reruns_by_head=reruns_by_head,

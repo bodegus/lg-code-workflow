@@ -219,7 +219,8 @@ our own code. Research references point into [research/](research/).
 - **Ordering:** issue/PR facts retain service timestamps. The binding `ThreadComment` has no
   timestamp, so finding-thread facts use UTC minimum as an explicit unknown-time sentinel,
   ordered by comment ID. That sentinel is not evidence of when a finding occurred.
-- **Counts:** fix counts reflect published `push` source markers, reruns reflect `ci` actions,
+- **Counts (extended by D-035):** unpublished gate-fix intents now also count; other fix counts
+  reflect published `push` source markers, reruns reflect `ci` actions,
   review rounds reflect review markers, and fresh restarts reflect session markers. No local
   counter is persisted. Questions are pending only without a later matching acknowledgement.
 - **Integration limit to resolve before T12/T14:** these current markers do not record
@@ -762,3 +763,47 @@ our own code. Research references point into [research/](research/).
   current authority remains PID plus direct-parent/descendant ancestry, with the review's
   acknowledged millisecond PID-reuse caveat. No claim of protection against that race or of
   containment for reparented daemons; later container/cgroup isolation remains the stronger path.
+
+
+## D-035 — T14 execution journals and content-bound publication
+
+- **Status:** implemented in T14; covers D-019's pre-publication gaps. No new dependency.
+- **Paid dispatch:** a `build` intent records operation, parent, session, source and owner command
+  before a turn. Its completion contains the sanitized canonical handoff, measured usage and
+  actual content fingerprint. An intent without completion asks `build_unknown`; only a new
+  authenticated owner retry authorizes another paid operation. A session selected but never
+  materialized may get one fresh `session_lost` session; a busy turn is not a lost session.
+- **Limits:** unpublished gate-fix attempts count distinct build intents in the PR ledger;
+  publication does not count the same attempt twice. Repeated normalized gate failures and
+  measured context occupancy select one fresh session per cause, then ask. Owner retry grants
+  are scoped to the pending limit. Local gate fixes retain CI/review publication provenance.
+- **Gate:** journal command intent before execution and exit/content/feedback after execution.
+  Unknown command completion asks, rather than replaying host commands. An explicit owner retry
+  gets a new operation. First gate entry checks bytes against the builder completion; commands
+  must leave the same content before/after. Exit zero with changed content is recorded truthfully
+  as zero plus blocking feedback, requiring another build and stable gate.
+- **Content evidence (D-034 R2-F4):** sorted changed paths include untracked files, deletions,
+  executable mode and symlink targets; framed SHA-256 hashes include the published parent.
+  Gate and publication compare actual bytes, not line counts. An independent temporary shared
+  audit clone checks out the immutable candidate commit and computes the same content hash
+  before push. Same-size edits after gate and edits during commit are rejected. A cancelled or
+  unknown paid turn has no usable completion; a prior completion cannot authorize altered bytes.
+  These checks do not claim global process containment or protection from later external writes.
+- **Git dependencies:** D-025 already selected thin git CLI integration. Hashing uses hashlib and
+  standard filesystem operations; auditing uses the same git adapter. No Git object decoder or
+  additional SDK is needed. Machine path output containing a redaction sentinel fails closed,
+  preventing a token-shaped filename from hiding a real symlink during path validation.
+- **Publication:** commit intent, exact operation/issue/parent trailers, committed receipt, leased
+  push, push receipt, canonical handoff body with atomic body-operation receipt, then completion.
+  A lost commit response recovers only matching trailers. A lost push response observes the exact
+  remote SHA. Reconciliation prioritizes incomplete owned publication before CI. A lost body
+  update response compares the actual body and avoids rewriting it. Foreign heads ask.
+- **Host command cleanup (review R2-X2):** stdout/stderr capture uses anonymous temporary files;
+  waiting is on the owned process, not pipe EOF. The owned process group is killed after normal
+  exit as well as timeout/cancellation, and reaping is bounded. An already escaped process group
+  is outside this containment, but cannot indefinitely hold pipe draining open. Real subprocess
+  regressions exercise both successful-parent/background-child and escaped-pipe cases.
+- **Evidence:** named T14 graph tests plus nine comment boundaries, commit/push/body response
+  loss, unknown paid/gate results with explicit retry, session-loss/context/failure caps,
+  provenance and same-path byte races. See the PR's actual command output. Unit checkpoints stop
+  at `ci_wait`; T15/T16 and a real end-to-end run remain unqualified by T14.

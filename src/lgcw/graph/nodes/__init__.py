@@ -8,11 +8,23 @@ from types import MappingProxyType
 from lgcw.graph.context import NodeFn
 from lgcw.graph.nodes.ask import ask
 from lgcw.graph.nodes.blocked import blocked
+from lgcw.graph.nodes.build import build
+from lgcw.graph.nodes.gate import gate
 from lgcw.graph.nodes.intake import intake
 from lgcw.graph.nodes.open_pr import open_pr
+from lgcw.graph.nodes.publish import publish
 from lgcw.graph.nodes.reconcile import reconcile
 from lgcw.models.base import Step
 
 DEFAULT_NODES: Mapping[Step, NodeFn] = MappingProxyType(
-    {"reconcile": reconcile, "intake": intake, "open_pr": open_pr, "ask": ask, "blocked": blocked}
+    {
+        "reconcile": reconcile,
+        "intake": intake,
+        "open_pr": open_pr,
+        "ask": ask,
+        "blocked": blocked,
+        "build": build,
+        "gate": gate,
+        "publish": publish,
+    }
 )
