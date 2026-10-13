@@ -1,0 +1,6 @@
+{
+  "number": 12, "id": "PR_synthetic", "url": "https://example.test/pull/12", "state": "OPEN",
+  "headRefName": "lgcw/issue-1", "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefName": "main", "isDraft": true, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+  "labels": {"nodes": [{"name": "lgcw:active"}]}
+}

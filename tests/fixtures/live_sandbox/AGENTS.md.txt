@@ -1,0 +1,15 @@
+# lgcw live qualification fixture
+
+This repository is an isolated test target for a deterministic issue-to-PR workflow.
+Keep changes bounded by the issue's acceptance criteria. Never merge or push to main.
+
+`VERSION` is the canonical release metadata used by `calculator.py --version`.
+Version-bump issues should change that file only, preserving the CLI and its tests.
+
+Local gate and CI command:
+
+```sh
+uv run --python 3.13 --with pytest==9.1.1 python -m pytest -q tests
+```
+
+The required workflow/job pair is `CI / test`, on every pull request.

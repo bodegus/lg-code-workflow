@@ -1,0 +1,5 @@
+{
+  "number": 1, "title": "Synthetic issue", "body": "## Done when\n- Version updated",
+  "user": {"login": "example"}, "state": "open", "labels": [],
+  "updated_at": "2026-10-13T00:00:00Z", "html_url": "https://example.test/issues/1"
+}

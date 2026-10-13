@@ -39,6 +39,7 @@ class IssueSnapshot(Strict):
     labels: tuple[str, ...]
     updated_at: datetime
     url: str
+    is_pull_request: bool = False
 
 
 class IntakeResult(Strict):

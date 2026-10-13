@@ -260,3 +260,54 @@ our own code. Research references point into [research/](research/).
   rendering uses standard-library string.Template/importlib.resources. No added dependency.
 - **Revisit when:** GitHub changes review listing or the graph requires another durable fact;
   do not claim crash qualification from this fake-only readiness work.
+
+## D-021 T5 live boundaries, SDK retry ownership and forward redaction dependency
+
+- **Decided:** 2026-10-13, T5 builder. Keep all service calls on the already-approved githubkit
+  0.16.1 SDK. Its installed constructor defaults `auto_retry=True`; explicitly disable that
+  and HTTP caching so nodes own recovery and reads re-observe GitHub. Use the SDK's current
+  REST Link-header paginator and GraphQL cursor paginator, rather than writing a paginator.
+- **Credentials:** the live guard runs before credential access. `GhCliTokenProvider` captures
+  `gh auth token` only inside code, caches it for 50 minutes, and emits a safe login instruction
+  on failure without including captured output. The SDK receives the token in memory, never in
+  argv or a log. The adapter refreshes its SDK auth from the provider at operation boundaries.
+- **Write pacing:** serialize mutations and wait one second after the previous mutation finishes,
+  including failures. Disable SDK retries for mutations as well as reads; do not blindly repeat
+  a failed POST inside the adapter.
+- **Forward dependency:** T5's required token test consumes `redact`, originally scheduled in
+  T11. Implement only the pure `lgcw.runlog.redact` helper and its pattern tests now; leave the
+  run log/report in T11. Standard-library regex is sufficient (D-011); no added package.
+- **Intake boundary:** add `IssueSnapshot.is_pull_request: bool = False` and map the REST
+  `pull_request` field. The planned intake rejection otherwise had no typed evidence with which
+  to distinguish a PR returned by the issue endpoint. Existing snapshot fields remain supported.
+- **GraphQL verification:** live schema introspection on 2026-10-13 confirms
+  `ResolveReviewThreadInput.resolutionReason` accepts ADDRESSED, WONT_FIX and INVALID, and review
+  comments expose `fullDatabaseId` (the old `databaseId` field is absent). Use full IDs without
+  32-bit truncation. This was a read-only schema check, not a submitted review qualification.
+- **Revisit when:** the pinned SDK or GitHub schema changes; re-run the live contract and actual
+  graph acceptance before claiming equivalent behavior.
+
+## D-022 Live fixture choice pending: existing sandbox cannot host issue intake
+
+- **Observed:** T5's first live attempt failed with HTTP 410 at issue creation. A subsequent
+  read confirmed `bodegus/oc2-publish-sandbox.has_issues = false`. No issue or PR was created;
+  the unique temporary branch was deleted and a separate GET confirmed HTTP 404. Main remained
+  at `01162f9cc2d7de1f09cdadb750c22b618b7e0f99`. The non-secret receipt and failure transcript
+  are retained locally and summarized on the PR; the failed attempt is not live qualification.
+- **Existing CI:** its current workflow additionally skips `lgcw/*` branches and documents an
+  intentionally failing baseline for OpenClaw tasks (D-018). Preserve that fixture's purpose;
+  do not turn skipped checks into success or change its settings without the owner's choice.
+- **Proposal awaiting owner:** create private `bodegus/lgcw-sandbox` from the reviewable files in
+  `tests/fixtures/live_sandbox/` (strip `.txt` from each filename when seeding). It has Issues,
+  `CI / test` on every PR, a small addition CLI and canonical `VERSION` release metadata.
+  A patch bump changes only VERSION; existing tests still verify arithmetic and the CLI's
+  reported release without weakening assertions. No repository has been created or modified
+  by this proposal. Owner may instead enable Issues on the existing sandbox, with separate CI
+  preparation still required before a complete workflow run.
+- **Local fixture proof:** copied the exact proposed files into a fresh temporary directory:
+  `uv run --python 3.13 --with pytest==9.1.1 python -m pytest -q tests` → `5 passed in 0.05s`.
+  This proves the local fixture baseline only, not GitHub CI or the lgcw workflow.
+- **Scope:** T5's local gate passes (146 unit tests, 99.73% current-package coverage); its live
+  qualification remains pending. Continue independent work while the fixture and dedicated
+  Codex login prerequisites await the owner. Update this decision with the actual choice and
+  live receipts before marking the live task complete.

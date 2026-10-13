@@ -65,7 +65,8 @@ background in [research/README.md](research/README.md).
 | `WorkspacePort`, `WorkspaceInfo`, `CommandResult`, `PushAuth`, `PushRejectedError` | `lgcw.git.port` | T8 |
 | `HarnessPort`, `HarnessError` family | `lgcw.harness.port`, `lgcw.harness.errors` | T9 |
 | `Clock`, `SystemClock` | `lgcw.clock` | T1 |
-| `RunLog`, `redact`, `render_report` | `lgcw.runlog` | T11 |
+| `redact` (D-021: brought forward for T5 token safety) | `lgcw.runlog` | T5 |
+| `RunLog`, `render_report` | `lgcw.runlog` | T11 |
 | `RunContext`, `ReconcileView`, `ReconcileOutcome`, `next_step`, `build_graph`, `run_issue` | `lgcw.graph` | T12 |
 | `FakeGitHub`, `FakeHarness`, `FakeClock` | `tests.fakes` | T4, T9, T1 |
 
@@ -119,7 +120,7 @@ def test_isolated_env_removes_tokens() -> None:
   - `RequiredCheck(workflow: str, job: str)`; `RiskClass(name: str, globs: tuple[str, ...])`; `ReviewThresholds(light_max_lines: int = 99, standard_max_lines: int = 499, many_files: int = 8)`; `Limits` with the Global Constraints defaults (`review_fix_rounds: dict[ReviewLevel, int]`).
   - `RepoConfig(full_name, default_branch, allowed_authors: tuple[str, ...], setup: tuple[str, ...], gate: tuple[str, ...], required_checks: tuple[RequiredCheck, ...], protected_globs, excluded_globs, source_globs, tests_globs, docs_globs: tuple[str, ...], risk_classes: tuple[RiskClass, ...], known_flaky: tuple[str, ...] = (), pre_existing_policy: Literal["note", "ask"] = "note")`.
   - `WorkflowConfig(home: Path, codex_home: Path, model: str | None, builder_effort: str, reviewer_effort: dict[ReviewLevel, str], verifier_effort: str, limits: Limits, thresholds: ReviewThresholds, repos: dict[str, RepoConfig])`.
-  - `IssueRef(repo: str, number: int)` with `IssueRef.parse("owner/repo#12")`; `IssueSnapshot(repo, number, title, body, author, state, labels: tuple[str, ...], updated_at: datetime, url)`; `IntakeResult(status: Literal["ok", "incomplete", "rejected"], acceptance_criteria: tuple[str, ...], reason: str | None)`.
+  - `IssueRef(repo: str, number: int)` with `IssueRef.parse("owner/repo#12")`; `IssueSnapshot(repo, number, title, body, author, state, labels: tuple[str, ...], updated_at: datetime, url, is_pull_request: bool = False)` (D-021: typed intake discrimination); `IntakeResult(status: Literal["ok", "incomplete", "rejected"], acceptance_criteria: tuple[str, ...], reason: str | None)`.
   - `PrSnapshot(number, node_id, url, state: Literal["OPEN", "CLOSED", "MERGED"], head_ref, head_sha, base_ref, is_draft: bool, mergeable: Literal["MERGEABLE", "CONFLICTING", "UNKNOWN"], merge_state: str, labels: tuple[str, ...])`; `IssueComment(id: int, author: str, body: str, created_at: datetime)`; `ThreadComment(id: int, author: str, body: str)`; `ReviewThread(node_id: str, is_resolved: bool, path: str, line: int | None, comments: tuple[ThreadComment, ...])`; `ReviewCommentDraft(path: str, line: int, start_line: int | None, body: str)`; `RunView(run_id, workflow, event, status, conclusion: str | None, head_sha, run_attempt: int)`; `JobView(job_id, run_id, workflow, name, status, conclusion: str | None, run_attempt, failed_steps: tuple[str, ...], annotations: tuple[str, ...], runner_name: str | None, url)`.
   - Markers (field `kind` is the discriminator; field lists in design §3.1): `RunMarker`, `SessionMarker`, `PushMarker`, `CiMarker`, `ReviewMarker`, `FindingMarker`, `AskMarker`, `AckMarker`, `ReadyMarker`, `BlockedMarker`; `Marker = Annotated[Union[...], Field(discriminator="kind")]`; `LedgerEntry(comment_id: int, created_at: datetime, where: Literal["issue", "pr", "thread"], marker: Marker)`; `PrLedger(entries: tuple[LedgerEntry, ...])`; `Command(verb: Literal["answer", "retry", "abort"], text: str, comment_id: int, author: str)`.
   - Strict output models (no defaults): `Decision(decision, alternatives_rejected: list[str], reason, evidence)`, `AcceptanceItem(criterion, status: Literal["met", "partial", "not_met"], evidence)`, `FileNote(path, why)`, `TestRun(command, result: Literal["pass", "fail", "not_run"], note)`, `Risk(area, why)`, `Disposition(finding_id, decision: Literal["fixed", "wont_fix", "invalid"], note, paths: list[str])`, `BuildHandoff(status: Literal["done", "blocked", "partial"], summary: list[str], approach: str, decisions, assumptions: list[str], acceptance, files, tests, not_done: list[str], risks, open_questions: list[str], followups: list[str], dispositions: list[Disposition])`; `LineRange(start: int, end: int)`, `CodeLocation(absolute_file_path: str, line_range: LineRange)`, `ReviewFinding(title, body, confidence_score: float (0..1), priority: int (0..3), category: str, code_location: CodeLocation)`, `ReviewVerdict(findings: list[ReviewFinding], overall_correctness: Literal["patch is correct", "patch is incorrect"], overall_explanation: str, overall_confidence_score: float)`, `FindingCheck(valid: bool, introduced_by_change: bool, reason: str)`.
@@ -259,11 +260,14 @@ def test_counts_derived_from_markers():
 - Consumes: `GitHubPort` (T4), models (T1).
 - Produces: `require_live(component: str, allow_live: bool) -> None` raising `LiveAdapterDisabledError` unless `allow_live` or `LGCW_LIVE=1`; `GhCliTokenProvider(TokenProvider)` (`gh auth token`, cached 50 minutes, never logged); `GitHubClient(token_provider: TokenProvider, *, allow_live: bool = False)` implementing every `GitHubPort` method with githubkit (REST; GraphQL for `get_pr`, `mark_ready`, `list_review_threads`, `resolve_thread`); pure mapping functions `pr_from_graphql(data: dict[str, Any]) -> PrSnapshot`, `job_from_rest(job: dict[str, Any], annotations: list[dict[str, Any]]) -> JobView`, `thread_from_graphql(node: dict[str, Any]) -> ReviewThread`.
 
-- [ ] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against `bodegus/oc2-publish-sandbox` (`@pytest.mark.live`).
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.** Mutating calls wait at least 1 s between each other (GitHub best practice); node retry policies (T12) handle transient errors, so the client does not retry 4xx.
+- [x] **Step 1: Write the failing tests**: `test_client_refuses_without_live` (constructing `GitHubClient(..., allow_live=False)` raises), `test_token_from_fake_gh` (a fake `gh` script on a temp `PATH` prints a token; the provider returns it and `redact` of the log line hides it), mapping tests over the synthetic fixtures (`test_pr_from_graphql_maps_mergeable`, `test_job_from_rest_timeout_annotation`), and the live contract test running the three T4 scenarios against `bodegus/oc2-publish-sandbox` (`@pytest.mark.live`).
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.** Mutating calls wait at least 1 s between each other (GitHub best practice); node retry policies (T12) handle transient errors, so the client does not retry 4xx.
 - [ ] **Step 4: Run** `make check` → PASS; then `LGCW_LIVE=1 uv run pytest tests/live/test_github_contract.py -m live` → PASS (the builder runs it; output pasted in the PR).
-- [ ] **Step 5: Commit** `feat(github): githubkit client behind GitHubPort`.
+- [x] **Step 5: Commit** `feat(github): githubkit client behind GitHubPort`.
+
+
+T5 live status (D-022): local `make check` passed; the first live contract failed at fixture issue creation (HTTP 410, Issues disabled). Temporary branch cleanup is verified. The live checkbox stays open pending the owner's fixture choice; do not call the adapter live-qualified yet.
 
 ### Task T6: CI policy — classifier, decision table, log trimming (pure)
 
@@ -377,7 +381,8 @@ def test_trim_keeps_errors_and_caps_size():
 ### Task T11: Run log, redaction and report
 
 **Files:**
-- Create: `src/lgcw/runlog/{__init__,log,redact,report}.py`
+- Reuse: `src/lgcw/runlog/{__init__,redact}.py` and redaction tests (brought forward in T5, D-021).
+- Create: `src/lgcw/runlog/{log,report}.py`
 - Create: `tests/unit/runlog/test_redact.py`, `test_log.py`, `test_report.py`
 
 **Interfaces:**

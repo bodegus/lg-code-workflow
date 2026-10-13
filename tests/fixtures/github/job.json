@@ -1,0 +1,6 @@
+{
+  "id": 22, "run_id": 11, "workflow_name": "CI", "name": "test", "status": "completed",
+  "conclusion": "cancelled", "run_attempt": 2, "runner_name": null,
+  "html_url": "https://example.test/job/22", "check_run_url": "https://api.github.test/check-runs/33",
+  "steps": [{"name": "Run tests", "status": "completed", "conclusion": "cancelled"}]
+}

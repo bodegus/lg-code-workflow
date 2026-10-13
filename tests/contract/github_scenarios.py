@@ -26,11 +26,13 @@ async def scenario_issue_comments_round_trip(
     issue = await github.get_issue(target.issue)
     assert (issue.repo, issue.number) == (target.issue.repo, target.issue.number)
     login = await github.viewer_login()
-    comment = await github.create_issue_comment(issue.repo, issue.number, "lgcw contract: comment")
+    comment = await github.create_issue_comment(
+        issue.repo, issue.number, "lgcw contract: comment\n-builder"
+    )
     observed = await github.list_issue_comments(issue.repo, issue.number)
     assert comment in observed
     assert comment.author == login
-    assert comment.body == "lgcw contract: comment"
+    assert comment.body == "lgcw contract: comment\n-builder"
 
 
 async def scenario_draft_pr_then_ready(
@@ -39,7 +41,11 @@ async def scenario_draft_pr_then_ready(
     """Open a draft on a prepared branch, find it, and transition it to ready."""
     repo = target.issue.repo
     pr = await github.create_draft_pr(
-        repo, target.branch, target.base, "lgcw contract fixture", "Contract only; no merge."
+        repo,
+        target.branch,
+        target.base,
+        "lgcw contract fixture",
+        "Contract only; no merge.\n-builder",
     )
     assert pr.is_draft and pr.head_sha == target.head_sha
     found = await github.find_open_pr(repo, target.branch)
@@ -60,28 +66,33 @@ async def scenario_review_thread_reply_and_resolve(
         repo,
         pr.number,
         target.head_sha,
-        "Contract review",
+        "Contract review\n-builder",
         [
             ReviewCommentDraft(
-                path=target.path, line=target.line, start_line=None, body="lgcw contract: finding"
+                path=target.path,
+                line=target.line,
+                start_line=None,
+                body="lgcw contract: finding\n-builder",
             ),
         ],
     )
     assert review_id > 0
     reviews = await github.list_pr_reviews(repo, pr.number)
     receipt = next(review for review in reviews if review.id == review_id)
-    assert (receipt.body, receipt.head_sha) == ("Contract review", target.head_sha)
+    assert (receipt.body, receipt.head_sha) == ("Contract review\n-builder", target.head_sha)
     threads = await github.list_review_threads(repo, pr.number)
     thread = next(
-        thread for thread in threads if thread.comments[0].body == "lgcw contract: finding"
+        thread
+        for thread in threads
+        if thread.comments[0].body == "lgcw contract: finding\n-builder"
     )
     assert not thread.is_resolved
     assert (thread.path, thread.line) == (target.path, target.line)
     await github.reply_to_review_comment(
-        repo, pr.number, thread.comments[0].id, "lgcw contract: addressed"
+        repo, pr.number, thread.comments[0].id, "lgcw contract: addressed\n-builder"
     )
     await github.resolve_thread(thread.node_id, "ADDRESSED")
     observed = await github.list_review_threads(repo, pr.number)
     resolved = next(item for item in observed if item.node_id == thread.node_id)
     assert resolved.is_resolved
-    assert resolved.comments[-1].body == "lgcw contract: addressed"
+    assert resolved.comments[-1].body == "lgcw contract: addressed\n-builder"
