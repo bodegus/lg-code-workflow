@@ -87,6 +87,10 @@ class WorkspacePort(Protocol):
         """Return all changed paths including untracked files."""
         ...
 
+    async def commit_paths(self, base_sha: str, head_sha: str) -> tuple[str, ...]:
+        """Return only paths in the immutable committed range, ignoring local work."""
+        ...
+
     async def worktree_fingerprint(self, base_sha: str) -> str:
         """Bind actual changed file bytes/modes to a base, stable before and after commit."""
         ...

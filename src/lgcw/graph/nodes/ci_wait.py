@@ -134,7 +134,7 @@ async def ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
         paths: tuple[str, ...] = ()
         if status == "failure":
             await ctx.workspace.prepare(ctx.repo, ctx.issue_ref, pr.head_ref)
-            paths = tuple(await ctx.workspace.changed_paths(run_marker.base_sha))
+            paths = await ctx.workspace.commit_paths(run_marker.base_sha, push.head_sha)
         history = ci_history(obs.ledger)
         grants = obs.ledger.counts().retry_grants.get("ci_wait", {})
         # A retry of an exhausted CI fix allowance grants exactly one extra fix, while

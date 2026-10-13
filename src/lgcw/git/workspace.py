@@ -301,6 +301,21 @@ class GitWorkspace(WorkspacePort):
         untracked = await self._paths(cwd, "ls-files", "--others", "--exclude-standard", "-z")
         return tuple(dict.fromkeys((*changed, *untracked)))
 
+    async def commit_paths(self, base_sha: str, head_sha: str) -> tuple[str, ...]:
+        """Read exact committed path evidence without including staged/dirty/untracked files."""
+        return await self._paths(
+            self._prepared().repo_dir,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            _sha(base_sha),
+            _sha(head_sha),
+            "--",
+        )
+
     async def worktree_fingerprint(self, base_sha: str) -> str:
         """Hash actual changed bytes and executable/symlink modes, checking config first."""
         info = self._prepared()

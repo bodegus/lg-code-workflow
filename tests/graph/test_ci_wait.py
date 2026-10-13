@@ -266,3 +266,19 @@ async def test_ruleset_missing_job_never_passes_on_configured_green(graph_case: 
     assert markers(graph_case, "ask")[-1].code == "ci_missing"
     assert not any(m.status == "success" for m in markers(graph_case, "ci"))
     assert len(harness.turns) == 1
+
+
+@pytest.mark.unit
+async def test_unpublished_workflow_file_cannot_turn_startup_failure_into_builder_fix(
+    graph_case: GraphCase,
+) -> None:
+    ctx, harness, head = await published(graph_case)
+    path = harness.root / ".github/workflows/unpublished.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text("name: uncommitted owner work\n")
+    graph_case.github.runs[head] = [run(head=head, conclusion="startup_failure")]
+    assert await execute_ci(ctx) == "waiting"
+    decision = markers(graph_case, "ci")[-1]
+    assert decision.klass == "startup_failure" and decision.action == "ask"
+    assert len(harness.turns) == 1 and len(graph_case.workspace.pushes) == 2
+    assert path.read_text() == "name: uncommitted owner work\n"

@@ -907,3 +907,19 @@ our own code. Research references point into [research/](research/).
   infrastructure-prose regressions; actual output in the PR. Read-only live policy discovery
   returned no required contexts for both authorized repos. T16 review/merge-ready remains an
   explicit unit checkpoint; no complete real workflow is claimed here.
+
+
+### D-036 immutable CI diff evidence and live Actions read proof
+
+- **Current-head evidence:** CI startup classification must use committed base..pushed-head
+  paths, not the owner's dirty or untracked work. A regression adds an unpublished workflow file
+  beside an unchanged committed workflow and observes a real-shaped startup_failure: before the
+  fix, it dispatched an unnecessary builder turn; now it asks without a new turn or push and
+  preserves the unpublished file. WorkspacePort.commit_paths uses the existing D-025 git CLI
+  boundary with explicit immutable SHAs and no external diff/textconv. No new dependency.
+- **Pinned adapter qualification:** read the D-032 owner-authorized closed T5 fixture PR25.
+  githubkit returns all three actual CI jobs, including two annotations on the audit failure,
+  and a 39,932-character plain-text log through the redirected download endpoint. Trimming yields
+  8,192 bytes. Zero paid turns or GitHub writes. Transcript:
+  docs/spikes/2026-10-13-actions-read.md. This confirms the adapter; it does not qualify a full run
+  or permit failure/skipped required checks to be treated as green.
