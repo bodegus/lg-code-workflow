@@ -365,3 +365,40 @@ our own code. Research references point into [research/](research/).
   evidence. No dependency or I/O added: stdlib PurePosixPath.full_match, parsing and existing hash.
 - **Revisit when:** a measured review miss or noisy manifest-only review warrants a richer typed
   input. Never infer a dependency's absence from line counts or allow fix deltas to lower review.
+
+## D-025 T8 workspace ownership, credential lifetime and reviewer instruction overlay
+
+- **Decided:** 2026-10-13. Keep D-009's thin async git CLI adapter; no dependency added. The
+  wrapper has an explicit minimal process environment, disables system/global git configuration,
+  hooks and fsmonitor, refuses prompts, and kills the process group on timeout/cancellation.
+  Trusted setup/gate commands use bash -lc with no inherited credential variables. Outputs and
+  log files are redacted before returning/writing; known push credentials and their base64 form
+  are additionally removed even if they do not match a token-shaped regex.
+  Reject known credentials and token-shaped arguments before process creation; a failing
+  regression proved output redaction alone did not prevent a literal token from entering argv.
+- **Interface additions:** GitWorkspace accepts optional `origin: Path` for local bare-repo unit
+  contracts, `token_provider: TokenProvider` for private fetches and `allow_live` for CLI authority.
+  Non-local operations require the live guard and provider; fetch auth, like push auth, is passed
+  via GIT_CONFIG environment, never a URL or persisted config. Tests never contact GitHub.
+  Add `WorkspacePort.head_sha() -> str`: after a crash following commit but preceding push,
+  commit_all returns None on the clean clone; recovery needs to read that existing commit rather
+  than guessing from the PR's older SHA or creating another commit. The regression failed first.
+- **Ownership:** one instance binds one issue; its only writable remote branch is
+  lgcw/issue-<number>. Verify configured and advertised remote default branches, origin identity,
+  local branch and clean state before publishing. Leases name the full ref and exact expected
+  SHA, including the empty expected SHA for create-only. Existing expected heads must be
+  ancestors of the proposed head. Prepare preserves an existing dirty clone; explicit adoption
+  refuses dirty state instead of deleting it. No implicit reset to an owner-pushed head.
+- **Diff evidence:** NUL-delimited numstat/path queries preserve unusual names. Include untracked
+  files without staging them so pre-publication inspection has no index side effect. Count binary
+  untracked changes as one line, matching T7. SHA arguments must be full object IDs.
+- **Reviewer:** each call creates a separate detached clone at the reviewed SHA. Replace all
+  head instruction paths with base versions (AGENTS.md, AGENTS.override.md, CLAUDE.md, .agents,
+  .claude and .codex, including nested paths), removing instructions newly introduced by head.
+  Before host commands or agent use, reject symlinks that resolve outside the checkout. Overlay
+  uses git's tracked base files/modes and never follows a head instruction symlink to write data.
+  A failing regression additionally exposed a head-created internal alias at a base instruction's
+  parent. Reject that layout before restore instead of relying on git's directory replacement.
+  The diff still uses committed base/head, so reviewers can inspect the instruction change.
+- **Revisit when:** parallel runs need cross-process mirror locking, or another git host is added.
+  Phase 1 runs one workflow process at a time; mirror/clone state is a cache, never progress state.

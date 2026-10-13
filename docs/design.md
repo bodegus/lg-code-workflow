@@ -176,7 +176,8 @@ Step details:
   `acceptance criteria|done when|definition of done|expected` (case-insensitive), else every
   `- [ ]` checklist item, else incomplete → `ask` on the issue. The issue is snapshotted (title,
   body, `updated_at`); `merge_ready` notes it if the issue changed later.
-- **open_pr.** Bare mirror fetch, `git clone --local` per issue, branch `lgcw/issue-<n>` from the
+- **open_pr.** Code-only token provider supplies ephemeral GIT_CONFIG environment authentication
+  to private fetches (D-025), never a URL or persisted config. Bare mirror fetch, `git clone --local` per issue, branch `lgcw/issue-<n>` from the
   default branch (or the existing remote branch on rerun). Runs the repo's `setup` commands
   (network on). Pushes the empty commit with lease "branch must not exist", opens the draft PR
   (title = issue title, body starts `Fixes #<n>`), labels `lgcw:active`, writes `run` and `push`
@@ -421,7 +422,8 @@ Job names must be checked against real runs when the file is written (plan task 
 Phase 1 runs on the owner's Mac with accepted exposures (D-004, D-012): Codex can read the home
 directory (including the `gh` login), and the builder has network access. Still enforced: no token
 in the Codex environment, in argv, in `.git/config` or in logs; `.git` read-only for the builder;
-reviewers read-only; owner-only commands; untrusted text fenced; hooks disabled for host git
+reviewers read-only on independent detached clones with base instruction overlays; checkout
+symlink escapes and instruction-parent aliases are rejected; owner-only commands; untrusted text fenced; hooks disabled for host git
 (`-c core.hooksPath=/dev/null`). Phase 2 targets: GitHub App identity, egress allowlist,
 Docker sandbox or Codex `exec-server` split, deny-read on `CODEX_HOME`.
 
