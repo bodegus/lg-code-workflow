@@ -1,0 +1,37 @@
+# Omit model to use the dedicated Codex login's configured model.
+builder_effort = "high"
+verifier_effort = "low"
+
+[reviewer_effort]
+none = "low"
+light = "medium"
+standard = "high"
+deep = "high"
+
+[limits]
+gate_fix_rounds = 2
+ci_fix_rounds = 3
+reruns_per_head = 2
+reruns_per_pr = 5
+ci_start_grace_s = 600
+ci_deadline_s = 5400
+poll_initial_s = 15
+poll_max_s = 120
+context_restart_ratio = 0.6
+build_run_timeout_s = 3600
+build_idle_timeout_s = 600
+review_run_timeout_s = 1200
+review_idle_timeout_s = 300
+verify_run_timeout_s = 300
+verify_idle_timeout_s = 120
+
+[limits.review_fix_rounds]
+none = 0
+light = 1
+standard = 2
+deep = 2
+
+[thresholds]
+light_max_lines = 99
+standard_max_lines = 499
+many_files = 8

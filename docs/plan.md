@@ -178,11 +178,11 @@ def test_issue_ref_parse():
 - Consumes: `WorkflowConfig`, `RepoConfig` (T1).
 - Produces: `load_config(root: Path, *, home: Path | None = None) -> WorkflowConfig` (reads `root/config/workflow.toml` and every `root/config/repos/*.toml`; `home` defaults to `$LGCW_HOME` or `~/.lgcw`); `WorkflowConfig.repo(full_name: str) -> RepoConfig` raising `UnknownRepoError`; `ConfigError` for a file name that does not match `full_name` (`owner__repo.toml`).
 
-- [ ] **Step 1: Write the failing tests**: `test_load_defaults` (limits equal the Global Constraints), `test_home_from_env` (`LGCW_HOME` → `config.codex_home == home / "codex"`), `test_repo_filename_must_match`, `test_unknown_key_rejected`, `test_unknown_repo_raises`, `test_sandbox_repo_config_valid`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** with `tomllib` and `model_validate`; sandbox config: `setup = []`, `gate = []`, `required_checks` from its `ci.yml` job names (read the workflow file; record the names).
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(config): load workflow and per-repo configuration`.
+- [x] **Step 1: Write the failing tests**: `test_load_defaults` (limits equal the Global Constraints), `test_home_from_env` (`LGCW_HOME` → `config.codex_home == home / "codex"`), `test_repo_filename_must_match`, `test_unknown_key_rejected`, `test_unknown_repo_raises`, `test_sandbox_repo_config_valid`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** with `tomllib` and `model_validate`; sandbox config: `setup = []`, `gate = []`, `required_checks` from its `ci.yml` job names (read the workflow file; record the names).
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(config): load workflow and per-repo configuration`.
 
 ### Task T3: Markers, commands and the ledger (pure)
 

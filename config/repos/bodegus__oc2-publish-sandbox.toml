@@ -1,0 +1,23 @@
+full_name = "bodegus/oc2-publish-sandbox"
+default_branch = "main"
+allowed_authors = ["bodegus"]
+setup = []
+gate = []
+# Verified at sandbox main 01162f9cc2d7de1f09cdadb750c22b618b7e0f99.
+# CI's current branch guard skips lgcw/issue-*; sandbox preparation is needed before a live run.
+required_checks = [{ workflow = "CI", job = "test" }]
+protected_globs = [".github/workflows/**"]
+excluded_globs = ["package-lock.json", "uv.lock", "**/*.lock"]
+source_globs = ["src/**", "*.py"]
+tests_globs = ["tests/**", "test/**", "test_*.py"]
+docs_globs = ["**/*.md"]
+known_flaky = []
+pre_existing_policy = "note"
+
+[[risk_classes]]
+name = "ci_supply_chain"
+globs = [".github/**"]
+
+[[risk_classes]]
+name = "agent_instructions"
+globs = ["AGENTS.md", "CLAUDE.md", ".agents/**", ".claude/**"]

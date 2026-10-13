@@ -6,7 +6,9 @@ merges. The pull request is the run's record: decisions are PR comments with hid
 findings are review threads, and you steer a run by replying `/lgcw answer …`, `/lgcw retry` or
 `/lgcw abort` on the PR.
 
-**Status:** Phase 1 (local, on the owner's Mac). Nothing is built yet; start with plan task T0.
+**Status:** Phase 1 (local, on the owner's Mac), under construction. T0 toolchain, T1 models and
+T2 configuration are implemented; adapters, graph nodes and the functional CLI are still to come.
+No complete live execution has been qualified yet. See the checked tasks in the plan.
 
 | Read | For |
 |---|---|

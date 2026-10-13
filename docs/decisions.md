@@ -183,3 +183,24 @@ our own code. Research references point into [research/](research/).
   Final full-gate proof will be recorded in this PR before T1 is marked complete.
 - **Revisit when:** a pinned SDK rejects these schemas or later task integration demonstrates
   a missing boundary field; record any interface change before dependent tasks consume it.
+
+## D-018 T2 trusted TOML loading and sandbox CI identity
+
+- **Decided:** 2026-10-13, T2 builder. Use `tomllib` and Pydantic validation as approved in D-011;
+  no added package. Unknown options, malformed files and filename/full_name mismatches fail as
+  `ConfigError`. Unconfigured target lookup raises `UnknownRepoError` (defined with the models
+  and re-exported from `lgcw.config`).
+- **Runtime paths:** explicit `home` wins over `LGCW_HOME`, then `~/.lgcw`; derive `codex_home`
+  as `home/codex`. TOML cannot override these managed paths or the discovered repository map.
+  Per-field limits retain the T1 defaults when omitted. No directory, clone or login is created
+  by loading configuration.
+- **Sandbox required check:** `CI / test`, read from `.github/workflows/ci.yml` at
+  `bodegus/oc2-publish-sandbox` main `01162f9cc2d7de1f09cdadb750c22b618b7e0f99`.
+  That workflow currently runs PR jobs only on `openclaw/*`, or on manual dispatch; therefore
+  `lgcw/issue-*` PRs are skipped. This configuration records the real name without qualifying
+  live acceptance. Sandbox preparation or a different approved fixture remains required.
+- **Evidence:** T2's PR records the missing-module failure, 16 configuration tests, and the
+  full `make check` result (73 tests, 100% current-package line coverage). The sandbox config
+  intentionally has empty setup/gate commands as the task specifies; CI is still mandatory.
+- **Revisit when:** a target's workflow or job names change, or sandbox preparation removes its
+  branch guard. Re-read actual target CI before a live run; do not classify skipped checks green.

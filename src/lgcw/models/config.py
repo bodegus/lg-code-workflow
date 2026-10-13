@@ -15,6 +15,10 @@ def _review_fix_defaults() -> dict[ReviewLevel, int]:
     return {"none": 0, "light": 1, "standard": 2, "deep": 2}
 
 
+class UnknownRepoError(KeyError):
+    """The requested target has no trusted repository configuration."""
+
+
 class RequiredCheck(Strict):
     """A workflow/job pair, avoiding collisions between same-named jobs."""
 
@@ -91,3 +95,14 @@ class WorkflowConfig(Strict):
     limits: Limits
     thresholds: ReviewThresholds
     repos: dict[str, RepoConfig]
+
+    def repo(self, full_name: str) -> RepoConfig:
+        """Return a configured target, refusing repositories outside the allowlist.
+
+        Raises:
+            UnknownRepoError: No repository configuration matches the full name.
+        """
+        try:
+            return self.repos[full_name]
+        except KeyError:
+            raise UnknownRepoError(full_name) from None
