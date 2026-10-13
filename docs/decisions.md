@@ -509,3 +509,35 @@ our own code. Research references point into [research/](research/).
 - **Limits:** this proves pure ingestion of already-read records, not a live GitHub submission
   or end-to-end lost-response recovery. T16 must read these receipts before posting another review
   and prove the crash case on the compiled graph. No dependency added.
+
+
+## D-030 Round-2 review corrections and durable recovery inputs
+
+- **Decided:** 2026-10-13, PR #1 review 6150249995, pinned head 1af4ad6. The reproduced P1/P2
+  findings correct implementation defects; no new runtime dependency is added.
+- **Service boundaries:** githubkit UNSET defaults must be excluded before mapping. Pending or
+  unsubmitted reviews are absent receipts; a submitted review can have no commit ID and cannot
+  authenticate a head marker until an exact head is present. Fakes accept review replies only
+  on the root comment, matching GitHub's restriction.
+- **Ledger:** only one complete trailing marker is a fact. An earlier complete marker makes the
+  comment ambiguous; an incomplete prefix is data and cannot swallow a valid trailing marker.
+  Retry grants are counted from acknowledgements joined to earlier questions, keyed by step/code
+  and deduplicated by command ID. T14–T16 consume those grants without erasing historical activity.
+- **Git:** authenticate against the explicitly configured URL. Before authenticated operations,
+  validate local mirror/clone config against an exact key/value allowlist and a prepare-time
+  snapshot. Reject transport programs, push URLs, includes, URL rewrites and config drift.
+  Git's generated `remote.origin.tagOpt=--no-tags` is permitted. Instruction matching is case
+  insensitive, and resume base is merge-base(default, HEAD); resumed means the remote issue
+  branch exists. This does not widen D-004's credential boundary.
+- **CI and review:** failed-run cancelled/skipped/neutral siblings are consequences, not separate
+  owner blockers. Blocked CI cannot dispatch a fix; mass failure counts genuine failures only.
+  Optional workflows cannot override required failures. Base jobs are selected by newest
+  completed workflow run/attempt (GitHub run IDs increase at creation). Excluded paths remain
+  risk evidence while excluded lines stay out of size counts; lockfiles select deep.
+- **Graph:** missing initial push receipts route to idempotent open_pr recovery. Head-moved retry
+  returns an explicit source=human PushMarker adoption request; T13 must persist it before CI.
+  A current review reporting blockers requires current-head finding evidence. Every node must
+  return next_step explicitly. Node and run failures retain redacted tracebacks locally while
+  questions expose only node/class. HTTP 429 is not automatically retried, consistent with D-028.
+- **Qualification:** compiled foundation tests prove routing/adoption inputs, not a complete live
+  crash recovery or paid-agent workflow. T13 and T17 retain those acceptance obligations.

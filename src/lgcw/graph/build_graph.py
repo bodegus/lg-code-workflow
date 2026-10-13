@@ -48,7 +48,10 @@ def _logged(step: Step, node: NodeFn) -> LoggedNode:
         attempt = runtime.execution_info.node_attempt if runtime.execution_info else 1
         runtime.context.log.event("node_start", node=step, attempt=attempt)
         try:
-            return await node(state, runtime)
+            update = await node(state, runtime)
+            if "next_step" not in update:
+                raise ValueError(f"{step} returned without an explicit next_step")
+            return update
         finally:
             duration = (runtime.context.clock.now() - started).total_seconds()
             runtime.context.log.event("node_end", node=step, attempt=attempt, duration_s=duration)

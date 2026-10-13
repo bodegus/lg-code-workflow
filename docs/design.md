@@ -116,10 +116,13 @@ repo config's `allowed_authors`, after the open question's comment id:
 | Command | Effect |
 |---|---|
 | `/lgcw answer <text>` | continue at the question's step; `<text>` becomes a trusted owner instruction for the next agent turn |
-| `/lgcw retry` | continue at the question's step with that step's counter reduced by one |
+| `/lgcw retry` | continue at the question's step with one additional round granted for its step/code |
 | `/lgcw abort` | stop: `blocked` marker, `lgcw:blocked` label, draft PR kept |
 
-Each applied command gets an `ack` marker, so it is applied once.
+Each applied command gets an `ack` marker, so it is applied once. `LedgerCounts.retry_grants`
+joins retry acknowledgements to prior `ask(seq)` facts by step/code; duplicate command IDs do
+not grant twice. Activity counts retain the actual number of attempts; consuming nodes compare
+those counts with the configured limit plus the corresponding grants.
 
 ### 3.4 Reconcile
 
@@ -134,7 +137,8 @@ bodies. Submitted review facts use their own namespace and require matching auth
 3. `ready` for the current head → end (`merge_ready`).
 4. PR head ≠ the last `push` head → `ask` ("head moved"); `/lgcw retry` adopts the new head with a
    `push` marker of source `human`.
-5. Otherwise continue from the last completed fact for the current head: no PR → `intake`; only the
+5. An open PR without a push receipt → idempotent `open_pr` recovery, which verifies its initial
+   checkpoint before writing missing receipts. Otherwise continue from the last completed fact for the current head: no PR → `intake`; only the
    initial push → `build`; a push with no `ci` marker → `ci_wait`; `ci` action `fix` → `build`;
    `ci` success or `proceed_note` with no `review` → `review`; a `review` with open blocking
    threads → `build`; a `review` with none → `merge_ready`.
@@ -263,11 +267,11 @@ Step details:
 
 ## 7. Review levels and finding rules
 
-`pick_level` (pure) uses `git diff --numstat` over base..head (excluding `excluded_globs`: lockfiles,
-generated, vendored), the repo's risk-class globs, owner labels and the handoff's `risks`. A human
+`pick_level` (pure) uses `git diff --numstat` over base..head (excluding `excluded_globs` from line counts, while retaining
+excluded paths as risk evidence), the repo's risk-class globs, owner labels and the handoff's `risks`. A human
 label chooses the initial level; a previous decision remains a floor on fix deltas. Conflicting
-owner labels choose the strongest level. Nothing an agent writes can lower a level. Manifest
-changes conservatively select deep because numstat cannot prove no dependency was added (D-024). Thresholds are config (re-fit after about 30
+owner labels choose the strongest level. Nothing an agent writes can lower a level. Manifest and lockfile
+changes conservatively select deep because numstat cannot prove no dependency was added (D-024; R2-C6). A fully excluded diff never selects `none`. Thresholds are config (re-fit after about 30
 runs).
 
 | Level | When (first match) | Reviewers | Effort | Blocks on | Fix rounds |
@@ -346,11 +350,18 @@ required, nullable where optional). Field lists are in the plan's Interfaces blo
 | `SessionSpec`, `SessionRef`, `TurnInput`, `Usage`, `TurnOutcome` | `models/harness.py` | harness port |
 | `Feedback`, `RunState` (mutable) | `models/state.py` | graph state |
 
+The log trimmer strips an initial UTF-8 BOM and treats a step section as everything from
+`##[group]` to the next `##[group]`. `##[endgroup]` ends the command-echo wrapper, not the
+step output. If the named section has no error, retain the first section containing an error.
+CI decisions use required workflows only, ignore cancelled/skipped/neutral consequences within
+a genuinely failed run, and compare against the latest completed base run/attempt per workflow.
+Blocked CI never dispatches a builder fix.
+
 ## 10. Failure handling
 
 | Failure | Handling |
 |---|---|
-| transient HTTP (5xx, 429, network) | node `RetryPolicy` (max 4, backoff from 2 s) with an explicit `retry_on`; never 4xx or `CalledProcessError` |
+| transient HTTP (5xx, network) | node `RetryPolicy` (max 4, backoff from 2 s) with an explicit `retry_on`; never 4xx (including 429) or `CalledProcessError`; paid agent dispatch is single-attempt |
 | any other exception after retries | default `error_handler` → `ask` with the node name and error class (no traceback in the comment; full traceback in the run log) |
 | Codex login, quota, timeout, invalid output | §5 |
 | crash or kill mid-run | rerun `lgcw run`; reconcile continues (§3.5) |

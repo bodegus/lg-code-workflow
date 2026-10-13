@@ -124,3 +124,63 @@ def test_agent_timeouts_are_explicit_and_configured() -> None:
     )
     assert review and (review.run_timeout, review.idle_timeout) == (1200, 300)
     assert agent_timeout("intake", Limits()) is None
+
+
+@pytest.mark.unit
+async def test_missing_next_step_never_repeats_a_paid_node(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    calls = 0
+
+    async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
+        return {"next_step": "build"}
+
+    async def broken(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    async def ask(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
+        assert state.ask and state.ask.code == "node_error"
+        return {"next_step": "end", "outcome": "waiting"}
+
+    mapping = nodes() | {"reconcile": reconcile, "build": broken, "ask": ask}
+    assert await run_issue(ctx, nodes=mapping) == "waiting"
+    assert calls == 1
+
+
+@pytest.mark.unit
+async def test_node_error_records_redacted_traceback(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    synthetic = "ghp_" + "A" * 36
+
+    async def broken(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
+        raise ValueError("diagnostic " + synthetic)
+
+    assert await run_issue(ctx, nodes=nodes() | {"reconcile": broken}) == "merge_ready"
+    events = (ctx.log.run_dir / "events.jsonl").read_text()
+    assert "Traceback (most recent call last)" in events and "in broken" in events
+    assert "ValueError: diagnostic" in events and synthetic not in events
+
+
+@pytest.mark.unit
+async def test_run_error_records_traceback(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    assert await run_issue(ctx) == "error"
+    events = (ctx.log.run_dir / "events.jsonl").read_text()
+    assert '"kind":"run_error"' in events and "Traceback (most recent call last)" in events
+    assert "in build_graph" in events
+
+
+@pytest.mark.unit
+def test_shared_graph_names_are_exported() -> None:
+    import lgcw.graph as graph
+
+    for name in (
+        "RunContext",
+        "ReconcileView",
+        "ReconcileOutcome",
+        "next_step",
+        "build_graph",
+        "run_issue",
+    ):
+        assert getattr(graph, name, None) is not None

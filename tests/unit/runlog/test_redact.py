@@ -59,3 +59,18 @@ def test_credential_context_redacted(text: str) -> None:
 def test_ordinary_text_preserved() -> None:
     text = "v1.2.3: 12 tests passed; repo: example/sandbox"
     assert redact(text) == text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "text",
+    [
+        '"Authorization": "Bearer opaque-secret"',
+        "'authorization': 'Basic b3BhcXVlLXNlY3JldA=='",
+        "Authorization=Basic b3BhcXVlLXNlY3JldA==",
+    ],
+)
+def test_authorization_dictionary_and_assignment_values_are_redacted(text: str) -> None:
+    output = redact(text)
+    assert "opaque-secret" not in output and "b3BhcXVlLXNlY3JldA==" not in output
+    assert "[REDACTED]" in output

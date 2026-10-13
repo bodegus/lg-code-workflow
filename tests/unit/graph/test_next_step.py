@@ -107,7 +107,7 @@ CASES = (
     ),
     Case(name="ci_green", state=view(PUSH, CI), expected="review"),
     Case(name="review_clean", state=view(PUSH, CI, REVIEW), expected="merge_ready"),
-    Case(name="unowned", state=view(), expected="ask"),
+    Case(name="unowned_recovery", state=view(), expected="open_pr"),
 )
 
 
@@ -159,4 +159,38 @@ def test_open_blocking_thread_requires_authenticated_ledger_evidence() -> None:
 
 @pytest.mark.unit
 def test_ready_without_owned_push_never_qualifies() -> None:
-    assert next_step(view(ReadyMarker(head_sha=SHA))).step == "ask"
+    assert next_step(view(ReadyMarker(head_sha=SHA))).step == "open_pr"
+
+
+@pytest.mark.unit
+def test_old_resolved_finding_is_not_current_review_evidence() -> None:
+    old = FINDING.model_copy(update={"head_sha": "b" * 40})
+    entries = (
+        *ledger(PUSH, CI, REVIEW.model_copy(update={"blocking": 1})).entries,
+        LedgerEntry(comment_id=99, created_at=NOW, where="thread", marker=old),
+    )
+    state = view().model_copy(
+        update={
+            "ledger": ledger().model_copy(update={"entries": entries}),
+            "threads": (thread(old, resolved=True),),
+        }
+    )
+    outcome = next_step(state)
+    assert outcome.step == "ask" and outcome.ask and outcome.ask.code == "review_evidence_missing"
+
+
+@pytest.mark.unit
+def test_missing_push_receipt_routes_to_idempotent_open_pr_recovery() -> None:
+    assert next_step(view()).step == "open_pr"
+
+
+@pytest.mark.unit
+def test_head_moved_retry_explicitly_requests_human_push_adoption() -> None:
+    question = AskMarker(seq=1, step="reconcile", code="head_moved")
+    retry = ANSWER.model_copy(update={"verb": "retry"})
+    state = view(PUSH, question).model_copy(
+        update={"commands": (retry,), "pr": snapshot().model_copy(update={"head_sha": "b" * 40})}
+    )
+    outcome = next_step(state)
+    assert outcome.step == "ci_wait" and outcome.command == retry
+    assert outcome.adopt == PushMarker(head_sha="b" * 40, source="human", round=1)

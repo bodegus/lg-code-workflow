@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import traceback
 from collections.abc import Mapping
 
 from lgcw.graph.build_graph import NodeFn, build_graph
@@ -38,7 +39,11 @@ async def run_issue(ctx: RunContext, *, nodes: Mapping[Step, NodeFn] | None = No
         ctx.log.write_report()
         raise
     except Exception as error:
-        ctx.log.event("run_error", error_class=type(error).__name__)
+        ctx.log.event(
+            "run_error",
+            error_class=type(error).__name__,
+            traceback="".join(traceback.format_exception(error)),
+        )
         outcome = "error"
     ctx.log.event("run_end", outcome=outcome)
     ctx.log.write_report()

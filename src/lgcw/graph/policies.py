@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import traceback
+
 from githubkit.exception import RequestError, RequestFailed, RequestTimeout
 from langgraph.errors import NodeError
 from langgraph.runtime import Runtime
@@ -81,7 +83,12 @@ async def default_error_handler(
         raise RuntimeError("node error context was not injected")
     name = error.node
     classification = type(error.error).__name__
-    runtime.context.log.event("node_error", node=name, error_class=classification)
+    runtime.context.log.event(
+        "node_error",
+        node=name,
+        error_class=classification,
+        traceback="".join(traceback.format_exception(error.error)),
+    )
     if name in {"ask", "blocked"}:
         return Command(update={"outcome": "error", "next_step": "end"}, goto="end")
     destination: Step = next(

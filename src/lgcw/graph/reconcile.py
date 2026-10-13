@@ -5,7 +5,15 @@ from __future__ import annotations
 from lgcw.models.base import Step, Strict
 from lgcw.models.github import PrSnapshot, ReviewThread
 from lgcw.models.issue import IssueSnapshot
-from lgcw.models.ledger import AckMarker, AskMarker, Command, FindingMarker, PrLedger, ReadyMarker
+from lgcw.models.ledger import (
+    AckMarker,
+    AskMarker,
+    Command,
+    FindingMarker,
+    PrLedger,
+    PushMarker,
+    ReadyMarker,
+)
 from lgcw.models.state import PendingAsk
 
 
@@ -26,6 +34,7 @@ class ReconcileOutcome(Strict):
     command: Command | None
     ask: PendingAsk | None
     reason: str
+    adopt: PushMarker | None = None
 
 
 def next_step(view: ReconcileView) -> ReconcileOutcome:
@@ -64,6 +73,17 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
         )
         if command is None:
             return route("end", "waiting")
+        if command.verb == "retry" and pending.marker.code == "head_moved" and pr is not None:
+            previous = ledger.last_push()
+            return ReconcileOutcome(
+                step="ci_wait",
+                reason="owner adopts current head",
+                command=command,
+                ask=None,
+                adopt=PushMarker(
+                    head_sha=pr.head_sha, source="human", round=previous.round if previous else 0
+                ),
+            )
         return route(
             "blocked" if command.verb == "abort" else pending.marker.step, "owner command", command
         )
@@ -71,9 +91,7 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
         return route("intake", "no PR")
     push = ledger.last_push()
     if push is None:
-        return ask(
-            "unowned_pr", "This PR has no recorded workflow-owned push. Confirm how to adopt it."
-        )
+        return route("open_pr", "recover missing initial push receipt")
     if pr.head_sha != push.head_sha:
         return ask(
             "head_moved",
@@ -114,12 +132,24 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
         for thread in view.threads
         if any(comment.id in findings for comment in thread.comments)
     ]
-    if any(not thread.is_resolved for thread in reported):
-        return route("build", "unresolved blocking findings")
-    if reviews[-1].blocking and not reported:
+    current_findings = {
+        entry.comment_id
+        for entry in ledger.entries
+        if entry.where == "thread"
+        and isinstance(entry.marker, FindingMarker)
+        and entry.marker.head_sha == pr.head_sha
+    }
+    current_reported = [
+        thread
+        for thread in reported
+        if any(comment.id in current_findings for comment in thread.comments)
+    ]
+    if reviews[-1].blocking and not current_reported:
         return ask(
             "review_evidence_missing",
             "Review reports blockers but its finding threads are missing.",
             "review",
         )
+    if any(not thread.is_resolved for thread in reported):
+        return route("build", "unresolved blocking findings")
     return route("merge_ready", "review has no unresolved blockers")
