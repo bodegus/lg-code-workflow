@@ -1285,7 +1285,7 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
   local receipt identities and hosted CI links. R1-OBS1..3 carry in the existing backlog; no new
   dependencies or speculative hardening. R2/R3 and their synthesis remain separate future work.
 
-## D-041 — R2: owner-delegated CI/dependency maintenance and weekly GitHub Action
+## D-043 — R2: owner-delegated CI/dependency maintenance and weekly GitHub Action
 
 - **Authority/scope:** Alex requested the next full issue-to-PR exercise, removing the two-Node
   matrix, consolidating every open Dependabot PR, adopting patch-only ranges, then adding a weekly
@@ -1295,8 +1295,9 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
 - **Policy migration:** replace CI/Node24.20.0 and CI/Node26.8.1 with stable CI/Quality; retain
   CI/Container build and smoke test. The issue requires the production audit unconditionally in
   the remaining quality lane. Node bounds become>=26.8.0,<26.9.0; npm bounds remain>=12.0.2,<13.
-  These are owner-requested target identities, pending exact-head hosted qualification; the
-  historical T17 identity fixture is not changed without reviewer authorization.
+  Quality/container are now qualified on exact target head2adfa1627a64696c91856f60f251463dc2768eae
+  (run38553158311). Reviewer6166501403 authorized the narrow live fixture migration. Final npm
+  upper-bound alignment to12.1.0 remains necessary to match target engines~12.0.2.
 - **Version syntax:** npm uses `~x.y.z`, setup-node accepts26.8.x; the owner's `~>26.8` is intent,
   not valid npm syntax. Keep updated Actions commit SHAs because `uses:` cannot express tilde
   ranges. Docker must use a verified26.8 patch-line tag; other images remain outside this change.
@@ -1315,6 +1316,19 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
   [event restrictions](https://github.com/github/docs/blob/main/data/reusables/actions/actions-do-not-trigger-workflows.md)
   so refresh PRs receive CI (explicit workflow_dispatch is an exception).
 - **Carry-forward:** reviewer6166068207 required R1-OBS4 (over-verification/cost) and R1-OBS5
-  (delegated operator identity; later owner decision) in this next PR; both are in the backlog.
+  (delegated operator identity) in this next PR; both are in the backlog. Merged D-041 records
+  the later owner/reviewer boundary decisions; D-042 is reserved for the separate signed-command fix.
   The R2 issue requests minimal local verification while retaining CI/container assertions.
   No new Python dependency or workflow runtime implementation change is introduced.
+
+- **R2 outcome:** the final CLI used merged0a1f3c6 and one explicitly authorized retry6168470941,
+  then fresh review and merge-ready (exit0). Four earlier unauthorized answers and two unmerged
+  harness invocations remain breaches; later delegation does not retroactively authorize them.
+  The full inspection is [R2](runs/r2-node26-weekly-deps-28.md).
+- **Known defects and continuation:** the light reviewer missed both same-job fresh dependency
+  execution/later PAT publication and the zero npm PR limit that suppresses minor/major proposals.
+  No token exists or was created. Reviewer6168424440 lets Alex merge or hold the inert PR29;
+  it requires an owner-approved R2b issue text and target main containing PR29 before the follow-up
+  run. No PAT may be created until the isolation fix merges; hosted refresh is not qualified.
+  The [draft](requests/r2b-safe-dependency-refresh.md) also carries the original minor/major/security
+  policy. Non-build owner feedback and post-publication revocation are deferred, not patched here.

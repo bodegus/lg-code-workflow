@@ -7,7 +7,8 @@ The PR is the durable run record; rerunning the same issue reconstructs progress
 **Phase 1 prototype:** the CLI and none/light review path are implemented and merged. R1 completed
 a real dependency bump through green CI, review and merge-ready, including a ci_wait kill/resume.
 One verified operator retry was needed before that interruption; see the [R1 evidence](docs/runs/r1-proxy-addr-26.md).
-Configured standard/deep reviews execute as one light review under D-037. R2 is in progress;
+Configured standard/deep reviews execute as one light review under D-037. R2 also reached
+merge-ready, with known follow-up work; see [R2 evidence](docs/runs/r2-node26-weekly-deps-28.md).
 R3 and hardening remain planned.
 
 ## Workflow
