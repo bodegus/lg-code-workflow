@@ -23,6 +23,28 @@ class ClaimsResult(Strict):
     ask: PendingAsk | None
 
 
+def explicit_allowed_paths(body: str) -> set[str]:
+    """Read one-path allow lines outside HTML comments and Markdown code fences."""
+    visible = re.sub(r"<!--[\s\S]*?(?:-->|$)", "\n", body)
+    allowed: set[str] = set()
+    fence_char, fence_length = "", 0
+    for line in visible.splitlines():
+        if fence_char:
+            if re.fullmatch(
+                r" {0,3}" + re.escape(fence_char) + "{" + str(fence_length) + r",}\s*", line
+            ):
+                fence_char, fence_length = "", 0
+            continue
+        opening = re.match(r" {0,3}(`{3,}|~{3,})", line)
+        if opening:
+            fence_char, fence_length = opening[1][0], len(opening[1])
+            continue
+        match = re.fullmatch(r"lgcw-allow: ([A-Za-z0-9_.@/+\-]+)", line)
+        if match:
+            allowed.add(match[1])
+    return allowed
+
+
 def check_claims(
     handoff: BuildHandoff,
     changed: Sequence[str],
@@ -46,7 +68,7 @@ def check_claims(
                 return_to="build",
             ),
         )
-    tokens = set(re.findall(r"[A-Za-z0-9_.@/+\-]+", issue_body))
+    tokens = explicit_allowed_paths(issue_body)
     protected = [
         path
         for path in changed
@@ -66,7 +88,7 @@ def check_claims(
             feedback=None,
             ask=PendingAsk(
                 code="protected_path",
-                question="Changes touch protected paths not explicitly named in the issue: "
+                question="Protected paths need explicit lgcw-allow lines in the issue: "
                 + ", ".join(protected)
                 + "; proposed content fingerprint: "
                 + (tree_fingerprint or "unavailable")

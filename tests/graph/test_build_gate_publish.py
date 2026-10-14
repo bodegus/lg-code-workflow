@@ -671,11 +671,12 @@ async def test_protected_approval_is_bound_to_exact_content(graph_case: GraphCas
     assert await execute(ctx) == "waiting"
     first = markers(graph_case, "ask")[-1]
     await ctx.github.create_issue_comment(ctx.issue_ref.repo, 100, "/lgcw answer approve")
+    (harness.root / "AGENTS.md").write_text("changed proposal\n")
     assert await execute(ctx) == "waiting"
     assert len(graph_case.workspace.pushes) == 1
     latest = markers(graph_case, "ask")[-1]
     assert latest.code == "protected_path" and latest.tree_fingerprint != first.tree_fingerprint
-    assert len(harness.turns) == 2
+    assert len(harness.turns) == 1
 
 
 @pytest.mark.unit
@@ -686,7 +687,7 @@ async def test_protected_approval_accepts_only_unchanged_proposal(graph_case: Gr
     assert await execute(ctx) == "waiting"
     await ctx.github.create_issue_comment(ctx.issue_ref.repo, 100, "/lgcw answer approve")
     assert await execute(ctx) == "waiting"
-    assert len(graph_case.workspace.pushes) == 2 and len(harness.turns) == 2
+    assert len(graph_case.workspace.pushes) == 2 and len(harness.turns) == 1
 
 
 @pytest.mark.unit

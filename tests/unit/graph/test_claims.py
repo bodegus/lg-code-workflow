@@ -19,7 +19,7 @@ from tests.unit.harness.cases import handoff
         ("done", (), (), "bump version", "no_changes"),
         ("done", ("app.py",), ("other.py",), "bump version", "claims_mismatch"),
         ("done", ("AGENTS.md",), ("AGENTS.md",), "bump version", "protected_path"),
-        ("done", ("AGENTS.md",), ("AGENTS.md",), "Update AGENTS.md instructions", None),
+        ("done", ("AGENTS.md",), ("AGENTS.md",), "lgcw-allow: AGENTS.md", None),
         ("partial", ("app.py",), ("app.py",), "bump version", "handoff_incomplete"),
         ("blocked", (), (), "bump version", "handoff_incomplete"),
     ],

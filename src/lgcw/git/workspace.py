@@ -94,6 +94,8 @@ class GitWorkspace(WorkspacePort):
         result = await git(*args, cwd=cwd, env=env)
         if result.code:
             raise RuntimeError(f"git {args[0]} failed ({result.code}): {result.err}")
+        if result.capture_truncated:
+            raise ValueError("git output capture was truncated; incomplete metadata is refused")
         return result.out.rstrip("\n")
 
     async def _paths(self, cwd: Path, *args: str) -> tuple[str, ...]:
@@ -272,6 +274,15 @@ class GitWorkspace(WorkspacePort):
     async def head_sha(self) -> str:
         """Return the clone's committed head, including a commit made before a crash."""
         return await self._checked(self._prepared().repo_dir, "rev-parse", "HEAD")
+
+    async def commit_parents(self, head_sha: str) -> tuple[str, ...]:
+        """Read all parents through the hooks-off complete-metadata boundary."""
+        fields = (
+            await self._checked(
+                self._prepared().repo_dir, "rev-list", "--parents", "-n", "1", _sha(head_sha)
+            )
+        ).split()
+        return tuple(_sha(value) for value in fields[1:])
 
     async def commit_message(self, sha: str) -> str:
         """Read a committed message without hooks or external programs."""
@@ -489,7 +500,7 @@ class GitWorkspace(WorkspacePort):
         if (
             f"LGCW-Operation: {operation}" not in message.splitlines()
             or f"LGCW-Parent: {parent_sha}" not in message.splitlines()
-            or await self._checked(cwd, "rev-parse", expected_head + "^") != parent_sha
+            or await self.commit_parents(expected_head) != (parent_sha,)
         ):
             raise ValueError("restore candidate has no exact owned publication proof")
         if await self._checked(cwd, "ls-files", "--others", "--exclude-standard", "-z"):

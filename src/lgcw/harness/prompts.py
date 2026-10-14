@@ -129,6 +129,7 @@ def render_restart_turn(
             "feedback": feedback.model_dump(mode="json") if feedback else None,
             "owner_answer": owner_answer,
         },
+        owner_answer,
     )
 
 

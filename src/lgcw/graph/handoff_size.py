@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from lgcw.ledger.markers import render_marker
 from lgcw.models.handoff import BuildHandoff
+from lgcw.models.ledger import BuildMarker
 
 # These are machine identities or enum values, never safe to shorten for display.
 _IDENTITIES = frozenset(
@@ -12,9 +15,19 @@ _IDENTITIES = frozenset(
 )
 
 
-def fit_handoff(handoff: BuildHandoff) -> BuildHandoff | None:
+def fit_handoff(
+    handoff: BuildHandoff, *, receipt: BuildMarker | None = None
+) -> BuildHandoff | None:
     """Clip explanatory prose, preserving every path/id/list item, or reject an unfit record."""
-    if len(handoff.model_dump_json()) <= 45000:
+
+    def measured(value: BuildHandoff) -> int:
+        if receipt is not None:
+            return len(render_marker(receipt.model_copy(update={"handoff": value})))
+        return len(
+            json.dumps(value.model_dump(mode="json"), ensure_ascii=True, separators=(",", ":"))
+        )
+
+    if measured(handoff) <= 45000:
         return handoff
 
     def bounded(value: Any, limit: int, key: str = "") -> Any:
@@ -32,6 +45,6 @@ def fit_handoff(handoff: BuildHandoff) -> BuildHandoff | None:
 
     for limit in (4096, 2048, 1024, 512, 128):
         result = BuildHandoff.model_validate(bounded(handoff.model_dump(), limit))
-        if len(result.model_dump_json()) <= 45000:
+        if measured(result) <= 45000:
             return result
     return None

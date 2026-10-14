@@ -488,10 +488,15 @@ this task. The default graph still refuses missing T14–T16 nodes.
 - Create: `tests/unit/graph/test_claims.py`, `tests/graph/test_build_gate_publish.py`
 
 **Interfaces:**
-- Produces: `check_claims(handoff: BuildHandoff, changed: Sequence[str], repo: RepoConfig, issue_body: str) -> ClaimsResult(ok: bool, feedback: Feedback | None, ask: PendingAsk | None)` (empty diff on `done` → `no_changes`; protected path not mentioned in the issue → ask); `should_restart_builder(usage: Usage | None, fingerprints: Sequence[str], restarts_by_cause: Mapping[str, int], ratio: float) -> str | None` (returns the cause or None).
+- Produces: `check_claims(handoff: BuildHandoff, changed: Sequence[str], repo: RepoConfig, issue_body: str) -> ClaimsResult(ok: bool, feedback: Feedback | None, ask: PendingAsk | None)` (empty diff on `done` → `no_changes`; protected path without an explicit `lgcw-allow: <path>` line outside HTML comments/code fences → ask); `should_restart_builder(usage: Usage | None, fingerprints: Sequence[str], restarts_by_cause: Mapping[str, int], ratio: float) -> str | None` (returns the cause or None).
 
 R1 extends `check_claims` with optional content fingerprint / structured protected approval,
 and WorkspacePort with owned restoration and an optional immutable push SHA (D-035 R1).
+
+R2 requires explicit allow lines (one exact relative path per line, outside HTML comments and
+Markdown code fences). Ordinary mentions/denials never authorize. Only the latest answered
+protected-path question can approve its exact paths/content; a later denial revokes prior approval.
+An unchanged approved proposal resumes at gate with zero additional paid turns.
 
 - [x] **Step 1: Write the failing tests**: `test_happy_build_gate_publish` (one `session` marker, one `push` with source `build`, PR body contains the handoff approach, commit trailers present), `test_gate_failure_then_fix` (second turn's text contains the gate tail and every criterion), `test_same_gate_failure_twice_restarts_then_asks`, `test_no_changes_counts_as_failure`, `test_protected_path_asks`, `test_handoff_blocked_asks_with_question`, `test_auth_error_asks_without_push`, `test_context_ratio_restarts_builder` (FakeHarness usage 0.7 × window before a fix round → new `session` marker with reason `fresh_restart`), `test_publish_once_across_crash` (crash after push before marker → rerun finds the remote head and writes one marker).
 - [x] **Step 2: Run** → FAIL.

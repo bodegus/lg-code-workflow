@@ -432,12 +432,13 @@ class PrLedger(Strict):
                 review_rounds += 1
             elif isinstance(marker, SessionMarker) and marker.reason == "fresh_restart":
                 fresh_restarts += 1
-        lost_sessions = {
+        unusable_attempts = {
             entry.marker.operation_id
             for entry in self.entries
             if isinstance(entry.marker, BuildMarker)
             and entry.marker.phase == "complete"
-            and entry.marker.error == "HarnessSessionLostError"
+            and entry.marker.error
+            in {"HarnessSessionLostError", "HarnessAuthError", "HarnessQuotaError"}
         }
         gate_attempts = {
             entry.marker.operation_id
@@ -445,7 +446,7 @@ class PrLedger(Strict):
             if isinstance(entry.marker, BuildMarker)
             and entry.marker.phase == "intent"
             and entry.marker.source == "gate_fix"
-            and entry.marker.operation_id not in lost_sessions
+            and entry.marker.operation_id not in unusable_attempts
         }
         return LedgerCounts(
             gate_fix_rounds=max(gate_fixes, len(gate_attempts)),

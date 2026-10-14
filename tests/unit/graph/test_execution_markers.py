@@ -95,10 +95,45 @@ def test_gate_attempt_counts_survive_reentry_without_double_counting_push() -> N
         feedback=None,
         error=None,
     )
-    complete = intent.model_copy(update={"phase": "complete", "error": "HarnessAuthError"})
+    complete = intent.model_copy(update={"phase": "complete", "error": "HarnessError"})
     facts = ledger(
         intent, intent, complete, PushMarker(head_sha="b" * 40, source="gate_fix", round=1)
     )
     assert facts.counts().gate_fix_rounds == 1
     second = intent.model_copy(update={"operation_id": "b2"})
     assert ledger(intent, complete, second).counts().gate_fix_rounds == 2
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("error", "count"),
+    [
+        ("HarnessAuthError", 1),
+        ("HarnessQuotaError", 1),
+        ("HarnessSessionLostError", 1),
+        ("HarnessError", 2),
+    ],
+)
+def test_only_known_unusable_attempts_are_refunded(error: str, count: int) -> None:
+    first = BuildMarker(
+        operation_id="refund-1",
+        parent_sha="a" * 40,
+        session_id="builder",
+        source="gate_fix",
+        phase="intent",
+        command_id=None,
+        handoff=None,
+        usage=None,
+        tree_fingerprint=None,
+        feedback=None,
+        error=None,
+    )
+    completed = first.model_copy(update={"phase": "complete", "error": error})
+    second = first.model_copy(update={"operation_id": "refund-2"})
+    assert ledger(first, completed, second).counts().gate_fix_rounds == count
+    assert (
+        ledger(first, completed, PushMarker(head_sha="b" * 40, source="gate_fix", round=1))
+        .counts()
+        .gate_fix_rounds
+        == 1
+    )
