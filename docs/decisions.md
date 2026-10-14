@@ -1436,3 +1436,13 @@ coverage (741.71s). No real harness or family-calendar CLI ran from this unmerge
   P1 and signed-command prerequisites. The fixture change is only the reviewer-authorized run
   ID/docstring; both assertions and the live lane remain unchanged. Documentation-only changes
   used normal lint/render checks under Alex's exception; this mixed config/test PR uses full gates.
+
+- **R2b inspection:** [run inspection](runs/r2b-safe-dependency-refresh-30.md) reads both actual
+  Codex transcripts, the local event ledger, all27 fixture command receipts and GitHub records.
+  One builder and one fresh reviewer consumed1839462 input tokens (1650048 cached),17674 output
+  (3943 reasoning subset),617.62s agent time. One narrowly delegated retry recovered the repeated
+  post-push head_moved; no repeated builder dispatch, manual answer/approval/abort, token creation
+  or unmerged harness invocation. Independent verdict6169271911 accepted the exact protected
+  proposal; residual transitive-lock data provenance and actual Dependabot security-patch behavior
+  are explicitly unqualified follow-ups. Target PR31 remains owner-controlled; hosted no-token
+  execution waits for main, and credentialed publication is separate.
