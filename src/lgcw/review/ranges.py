@@ -30,9 +30,9 @@ def reviewed_ranges(diff: str) -> dict[str, tuple[LineRange, ...]]:
         elif line.startswith('+++ "'):
             raise ValueError("quoted review paths require owner inspection")
         elif line.startswith("--- a/"):
-            path = line[6:]
+            path = line[6:].removesuffix("\t")
         elif line.startswith("+++ b/"):
-            path = line[6:]
+            path = line[6:].removesuffix("\t")
         elif line.startswith("@@"):
             match = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
             if match is None or path is None:

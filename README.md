@@ -52,7 +52,7 @@ uv run lgcw report bodegus/family-calendar#N
 Exit codes: 0 merge-ready/success; 2 waiting (including an already-active local run); 3 blocked or
 closed; 1 error. A waiting run has a question on its PR or issue. The allowed owner can answer
 `/lgcw answer ...`, `/lgcw retry` or `/lgcw abort`; then rerun the same `run` command.
-Report reads local evidence and starts no agents or GitHub clients. `LGCW_HOME` selects a different
+Report regenerates local report.md from evidence and starts no agents or GitHub clients. `LGCW_HOME` selects a different
 state directory and dedicated Codex home. Local state is never committed.
 
 ## Qualification
@@ -69,3 +69,6 @@ The smoke launches the actual CLI, records its PR facts, kills its verified owne
 in ci_wait, and resumes to merge-ready with green required CI. It retains an interruption receipt
 and refuses to repeat an uncertain kill. Receipts, usage and the report remain under
 `~/.lgcw/runs/bodegus__family-calendar__N/`. A missing issue selection is reported as not run.
+
+For R1, the local gate runs `npm run check`; production audit is qualified by the existing CI
+jobs running `npm audit --omit=dev --audit-level=high`, not by that local gate.

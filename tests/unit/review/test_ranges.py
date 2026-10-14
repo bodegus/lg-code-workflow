@@ -40,3 +40,20 @@ def test_review_ranges_parse_actual_hunks(diff: str, expected: dict[str, tuple[i
 def test_review_ranges_reject_ambiguous_or_truncated(diff: str) -> None:
     with pytest.raises(ValueError):
         reviewed_ranges(diff)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("old,new", [("my file.py", "my file.py"), ("old name.py", "new name.py")])
+def test_review_ranges_strip_git_header_separator(old: str, new: str) -> None:
+    diff = f"diff --git a/{old} b/{new}\n--- a/{old}\t\n+++ b/{new}\t\n@@ -1 +1 @@\n-a\n+b\n"
+    assert tuple(reviewed_ranges(diff)) == (new,)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("path", [r"x\ty.py", r"caf\303\251.py"])
+def test_quoted_paths_fail_closed(path: str) -> None:
+    diff = (
+        f'diff --git "a/{path}" "b/{path}"\n--- "a/{path}"\n+++ "b/{path}"\n@@ -1 +1 @@\n-a\n+b\n'
+    )
+    with pytest.raises(ValueError, match="quoted"):
+        reviewed_ranges(diff)

@@ -639,6 +639,30 @@ under reviewer6160563054; any landing is a separate PR after the first live run.
 - V-P3b (PR4): scope approval revocation to relevant later commands and duplicate approvals.
 - V-P3c (PR4): avoid a charged fix after denial during a gate and subsequent reapproval.
 - V-P3d (PR4): re-ask after denial-ack crashes instead of dispatching a paid turn.
+- X-3 (PR6/R1): overall verdict and dropped-finding visibility fixed with R1-F2; routing still uses findings.
+- W-3 (PR6/R1): restore draft after a head race in mark_ready; requires an adapter operation, deferred.
+- W-2/X-5 (PR6/R1): bound the whole review body before posting, avoiding a paid retry after HTTP422.
+- X-4 (PR6/R1): turn the git64KiB diff capture limit into an ask; current262KiB bound is unreachable.
+- W-4 (PR6/R1): grant review_unknown retry only after a counted reviewer attempt.
+- W-5 (PR6/R1): detect unknown second review dispatch before the round-cap question.
+- W-6 (PR6/R1): recover pre_existing note with red CI without paying review/looping until abort.
+- W-7 (PR6/R1): poll transient UNKNOWN mergeability before asking; explicit retry currently recovers.
+- W-8/X-6 (PR6/R1): avoid ticking partial/not_met acceptance criteria in the merge-ready body.
+- X-7 (PR6/R1): owner decision later on attribution of review-level override labels.
+- X-8 (PR6/R1): repair the old-head green-CI body after a post-ready head move.
+- X-10 (PR6/R1): explicitly label the fenced review diff as untrusted in its template.
+- X-11 (PR6/R1): kill RV4/RV17/RC1b/RV9 mutants; seed active label for a non-vacuous switch check.
+- Y-1 (PR7/R1): mutation-test allowed_authors membership before real adapter construction.
+- Y-2 (PR7/R1): record factory calls instead of swallowed AssertionErrors in CLI boundary tests.
+- Y-3 (PR7/R1): unit autouse should disable make_context and isolate GH_CONFIG_DIR.
+- Y-4 (PR7/R1): restrict issue numbers to ASCII decimal [1-9][0-9]{0,9}.
+- Y-5 (PR7/R1): probe tools with the gate's bash-lc stripped environment and PATH behavior.
+- Y-6 (PR7/R1): handle Codex path/mkdir/lock failures and distinguish a busy profile.
+- Y-7 (PR7/R1): qualify doctor GitHub-login membership in allowed_authors.
+- Y-8 (PR7/R1): classify eslint.config.js, .node-version and .gitattributes for protection/risk.
+- Y-9 (PR7/R1): capture the first smoke CLI's stdout to a file instead of an unread PIPE.
+- Y-10 (PR7/R1): R1 production audit runs in CI, not the local npm-run-check gate (documented).
+- Y-11 (PR7/R1): report regenerates local report.md (README wording corrected).
 - 6159291007/verifier: defer the fresh finding-verifier step until after first-run evidence.
 - 6159291007/disputes: defer disputed-finding handling until after first-run evidence.
 - 6159291007/threads: defer finding-thread resolution until after first-run evidence.

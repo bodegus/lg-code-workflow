@@ -194,6 +194,28 @@ async def review(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any
             [LensVerdict(lens="general", verdict=outcome.output)], level, ranges, checkout, ()
         )
     )
+    unmatched = tuple(
+        item
+        for item in result.dropped
+        if item.finding.priority <= 1 and item.reason != "finding was already reported"
+    )
+    result = result.model_copy(
+        update={
+            "blocking": (
+                *result.blocking,
+                *(
+                    item.model_copy(
+                        update={
+                            "blocking": True,
+                            "reason": "unmatched critical finding requires owner inspection",
+                        }
+                    )
+                    for item in unmatched
+                ),
+            ),
+            "dropped": tuple(item for item in result.dropped if item not in unmatched),
+        }
+    )
     marker = ReviewMarker(
         head_sha=head,
         level="light",
@@ -215,11 +237,15 @@ async def review(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any
         or await ctx.github.branch_head(ctx.issue_ref.repo, fresh.head_ref) != head
     ):
         return attention("head_moved", "Head changed during review.", "reconcile")
-    prose = f"Prototype review: configured {configured.level}, executed light.\n\n"
+    verdict = sanitized(outcome.output)
+    prose = (
+        f"Prototype review: configured {configured.level}, executed light.\n\n"
+        f"{verdict.overall_correctness}: {verdict.overall_explanation}\n\n"
+    )
     prose += (
         "\n\n".join(
-            f"{item.id} {item.finding.title}\n{item.path}: {item.finding.body}"
-            for item in (*result.blocking, *result.nonblocking)
+            f"{item.id} {item.finding.title}\n{item.path}: {item.finding.body}\n{item.reason}"
+            for item in (*result.blocking, *result.nonblocking, *result.dropped)
         )
         or "No actionable findings."
     )
@@ -246,6 +272,15 @@ async def _finish(state: RunState, ctx: RunContext, marker: ReviewMarker) -> dic
     if state.pr is None or marker.result is None:
         return attention("review_evidence_missing", "Review result is missing.", "review")
     await finish_command(ctx, state, state.pr.number)
+    if any(
+        item.reason == "unmatched critical finding requires owner inspection"
+        for item in marker.result.blocking
+    ):
+        return attention(
+            "review_evidence_missing",
+            "Critical review location cannot be matched; inspect the recorded findings.",
+            "review",
+        ) | {"owner_command": None}
     if not marker.blocking:
         return {"owner_command": None, "next_step": "merge_ready"}
     if _attempts(state) >= _cap(state):

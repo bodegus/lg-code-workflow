@@ -74,7 +74,7 @@ class HostProbe:
             version = (int(match[1]), int(match[2]), int(match[3])) if match else None
             return ProbeResult(code=result.returncode, version=version)
         except (OSError, subprocess.TimeoutExpired):
-            return ProbeResult(code=1)
+            return ProbeResult(code=-1)
 
 
 def doctor(
@@ -164,7 +164,18 @@ def doctor(
                 Check(name="codex_login", ok=False, detail="Dedicated Codex profile is busy.")
             )
             return checks
-        result = host.run((str(binary), "login", "status"), build_codex_env(config, os.environ))
+        env = build_codex_env(config, os.environ)
+        result = host.run((str(binary), "login", "status"), env)
+        sandbox = host.run(
+            (str(binary), "sandbox", "-P", ":workspace", "--", "gh", "auth", "status"), env
+        )
+        checks.append(
+            Check(
+                name="github_sandbox_isolation",
+                ok=sandbox.code == 1,
+                detail="Builder sandbox must deny the owner's GitHub login.",
+            )
+        )
     checks.append(
         Check(
             name="codex_login",

@@ -54,6 +54,10 @@ our own code. Research references point into [research/](research/).
   workflow comments; commands are accepted only from comments without a marker. Reviews are posted
   as `COMMENT` (GitHub does not let authors approve or request changes on their own PRs). Codex can
   read the home directory, including the `gh` login (accepted for the local test).
+- **X-9 observation (PR6/6161401783):** reviewer probes with pinned Codex0.162.1 workspace/
+  read-only sandbox presets and the minimal environment could not use the current gh keychain
+  login (invalid default token); no GH_TOKEN is inherited. This is a current-host observation,
+  not a general home-directory isolation guarantee; T17 doctor requalification follows on PR7.
 - **Revisit when:** Phase 2 (GitHub App `lg-code-workflow[bot]`, repo-scoped tokens, `checks:read`).
 
 ## D-005 Reviewer fresh, builder resumed, with guardrails
@@ -1198,6 +1202,16 @@ must qualify its own metadata. Zero model turns/GitHub writes; exact transcript 
   All test services are fakes and local git. T16 requires no new live model turn; the full live
   CLI qualification remains T17/R1. U-1..U-7 and V-NEW/P3 carry in the single T17 backlog.
 
+
+### D-038 R1 — Merge regression guard and unmatched critical locations
+
+R1-F1 strengthens the static guard with injected SDK/GraphQL/REST/argv/constructed-name cases;
+merge_state is an explicit read-only metadata allowance alongside the requested allowlist.
+R1-F2 removes git's separator TAB and keeps quoted paths fail closed before dispatch. Unmatched
+P0/P1 findings become recorded blockers requiring owner inspection, including lost-review-response
+recovery. Verdict/explanation and dropped reasons are visible (X-3); W-3 needs a new adapter call
+and carries with the other named non-blockers. No dependency, agent turn or live write added.
+
 ## D-039 — Minimal CLI and the R1 qualification boundary
 
 - **Authority:** reviewer6160563054 authorizes one T17 branch stacked on T16 head2108897.
@@ -1241,3 +1255,14 @@ must qualify its own metadata. Zero model turns/GitHub writes; exact transcript 
 - **Qualification state:** doctor and read-only CI identity qualification pass without a paid
   model turn. Full R1 kill/resume remains unrun until Alex creates the issue. The source PR will
   say needs owner and retain the exact prerequisite; these checks do not claim complete execution.
+
+### D-039 R1 — Doctor sandbox GitHub regression
+
+PR7 review6161451205 requires a zero-model-turn pinned workspace-sandbox auth-status probe
+with the harness's four-key environment. Doctor accepts only exit1 (credential denial); auth
+success or an unavailable/timed-out probe fails the check. HostProbe uses -1 for unavailable
+probes so failures cannot masquerade as denial. No raw auth output is returned or printed.
+Reviewer authorization6161650797 permits FakeDoctor to return1 only for the exact new sandbox
+argv, preserving every existing assertion. Explicit allowed/denied/unavailable cases are added.
+This preserves the current-host D-004 observation, not a general home-isolation guarantee.
+Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behavior. No dependency.

@@ -23,7 +23,8 @@ class FakeDoctor:
 
     def run(self, argv: Sequence[str], env: Mapping[str, str] | None = None) -> ProbeResult:
         self.calls.append((tuple(argv), dict(env) if env is not None else None))
-        return ProbeResult(code=0)
+        sandbox_auth = ("sandbox", "-P", ":workspace", "--", "gh", "auth", "status")
+        return ProbeResult(code=1 if tuple(argv[1:]) == sandbox_auth else 0)
 
 
 @pytest.mark.unit
