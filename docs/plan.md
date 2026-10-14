@@ -591,7 +591,7 @@ checks gh login, Codex account login without a model turn, git, configured tools
 - [x] **Step 2: Run** → FAIL.
 - [x] **Step 3: Implement** run/report/doctor and the family-calendar config from its actual CI:
   Node24.20.0, Node26.8.1, Container build and smoke test (re-confirm); setup npm ci, gate npm run check.
-- [ ] **Step 4: Run** `make check` → PASS. The live smoke is Phase1bR1, the family-calendar
+- [x] **Step 4: Run** `make check` → PASS. The live smoke is Phase1bR1, the family-calendar
   proxy-addr production-audit fix. Once Alex has created its issue, run
   `uv run lgcw run bodegus/family-calendar#<n>`, kill once during ci_wait, rerun to merge-ready,
   and retain report/usage/CI/side-effect receipts proving no duplicate dispatch or publication.
@@ -600,11 +600,12 @@ checks gh login, Codex account login without a model turn, git, configured tools
 
 T17 is authorized stacked on2108897 by reviewer6160563054. Optional09c6c78 is excluded;
 it stays on its local branch for a separate post-first-run PR. Doctor and the actual configured-job
-identity check pass; the full CLI R1 kill/resume is not run because Alex has not created its issue.
-D-039 records the observed host-version prerequisite and local qualified toolchain.
+identity check pass. Alex then explicitly delegated the prepared issue and real test; issue26/PR27
+completed the actual CLI kill/resume. One verified operator retry preceded the controlled kill.
+D-039 records the qualified toolchain; D-040 and [R1 inspection](runs/r1-proxy-addr-26.md) record the live proof.
 
-Local T17 qualification:1025 units,5 live deselected,95.22% coverage; all commit hooks PASS.
-Step4 stays open for the actual owner-created R1 kill/resume and merge-ready proof.
+Final T17 qualification:1056 units,5 live deselected,95.32% coverage; hooks and exact-head CI PASS.
+Step4 is complete: real smoke1passed/117.98s, all three target CI jobs green, one exact-head ready receipt.
 
 #### Hardening backlog
 
@@ -663,6 +664,9 @@ under reviewer6160563054; any landing is a separate PR after the first live run.
 - Y-9 (PR7/R1): capture the first smoke CLI's stdout to a file instead of an unread PIPE.
 - Y-10 (PR7/R1): R1 production audit runs in CI, not the local npm-run-check gate (documented).
 - Y-11 (PR7/R1): report regenerates local report.md (README wording corrected).
+- R1-OBS1 (live issue26): investigate post-push PR-head mismatch; later PR/ref/local SHA matched the owned journal. A bounded convergence read must preserve genuine head-move refusal; one operator retry recovered.
+- R1-OBS2 (live issue26): document inherited production NODE_ENV for builder container preflight; avoid an unnecessary missing-ESLint failure without skipping required checks.
+- R1-OBS3 (live issue26): label historical handoff CI/PR caveats clearly after code-owned readiness; operator receipt currently provides the actual hosted output (related W-8/X-6).
 - 6159291007/verifier: defer the fresh finding-verifier step until after first-run evidence.
 - 6159291007/disputes: defer disputed-finding handling until after first-run evidence.
 - 6159291007/threads: defer finding-thread resolution until after first-run evidence.
@@ -678,7 +682,7 @@ under reviewer6160563054; any landing is a separate PR after the first live run.
 Each run: the owner writes the issue (with acceptance criteria). The builder executes an
 authorized `uv run lgcw run <ref>`, then uses `inspecting-runs` and writes `docs/runs/<id>.md`.
 
-- [ ] **R1 simple (T17 live smoke; manifest risk configured deep, executed light under D-037):** family-calendar — update the transitive `proxy-addr` dependency so `npm audit --omit=dev --audit-level=high` passes (it currently fails CI on every open PR). Watch: dependency change with builder network; CI green proves it.
+- [x] **R1 simple (T17 live smoke; manifest risk configured deep, executed light under D-037):** family-calendar — update the transitive `proxy-addr` dependency so `npm audit --omit=dev --audit-level=high` passes. Qualified on issue26/PR27 at478db75: actual kill/resume passes, Node24/26 and container CI green. See [inspection](runs/r1-proxy-addr-26.md).
 - [ ] **R2 medium (expected: standard):** a family-calendar feature chosen by the owner.
 - [ ] **R3 complex (expected: deep):** a memgo-app feature chosen by the owner (candidates: bodegus/memgo-app#262, #261, #197). Watch: 12–32 minute CI on self-hosted runners, the known Mongo flake (bodegus/memgo-app#192), the long-wait cache question.
 - [ ] **Synthesis:** `docs/runs/phase-2-priorities.md` — the improvement areas ranked by cost, failures and owner effort, with evidence from the three runs. This ranking replaces the Phase 2 list below where they differ.

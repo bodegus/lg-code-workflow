@@ -1,6 +1,10 @@
-# R1 issue proposal for Alex to create
+# R1 issue proposal (executed by explicit owner delegation)
 
-Authority: owner decision relayed in PR4 comment6159291007 reserves the first live issue's
+Executed as [family-calendar#26](https://github.com/bodegus/family-calendar/issues/26) after Alex
+explicitly authorized the prepared issue and real test in the builder chat. The result is in
+[R1 inspection](../runs/r1-proxy-addr-26.md); the following preserves the original proposal.
+
+Original authority: owner decision relayed in PR4 comment6159291007 reserves the first live issue's
 creation to Alex. This is proposed issue text, not a run report or completed acceptance.
 
 Repository: `bodegus/family-calendar`

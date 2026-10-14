@@ -4,10 +4,10 @@ A local LangGraph workflow from a GitHub issue to a **merge-ready pull request**
 routing, git, GitHub writes, CI and limits. Codex builds and reviews. It never merges.
 The PR is the durable run record; rerunning the same issue reconstructs progress from its markers.
 
-**Phase 1 prototype:** the CLI and none/light review path are implemented. The first complete real
-issue execution is still unqualified; T17/R1 tracks that live proof separately from local tests.
-Configured standard/deep reviews execute as one light review under D-037. Advanced review and
-hardening follow the first run's evidence.
+**Phase 1 prototype:** the CLI and none/light review path are implemented and merged. R1 completed
+a real dependency bump through green CI, review and merge-ready, including a ci_wait kill/resume.
+One verified operator retry was needed before that interruption; see the [R1 evidence](docs/runs/r1-proxy-addr-26.md).
+Configured standard/deep reviews execute as one light review under D-037. R2/R3 and hardening remain planned.
 
 | Read | For |
 |---|---|
@@ -40,8 +40,8 @@ export PATH="$HOME/.lgcw/toolchains/node-24.20.0-darwin-arm64/bin:$PATH"
 ## Run, inspect and resume
 
 Run from this checkout, or pass `--root /path/to/lg-code-workflow` before the command. Replace N
-with an owner-created issue number; R1's [prepared issue](docs/requests/r1-proxy-addr-issue.md)
-remains Alex's action under the prototype decision.
+with an owner-supplied or explicitly delegated issue number. Alex delegated R1 issue creation
+and execution; it is [family-calendar#26](https://github.com/bodegus/family-calendar/issues/26).
 
 ```bash
 uv run lgcw doctor --repo bodegus/family-calendar
