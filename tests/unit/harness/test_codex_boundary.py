@@ -156,6 +156,107 @@ async def test_resumed_session_without_accounting_never_dispatches(tmp_path: Pat
 
 
 @pytest.mark.unit
+async def test_restart_preserves_typed_sdk_cwd_and_role_policy(tmp_path: Path) -> None:
+    from openai_codex.generated.v2_all import AbsolutePathBuf
+
+    from tests.fakes.codex import FakeThread
+
+    config = load_config(Path(__file__).parents[3], home=tmp_path)
+    root = tmp_path / "workspace"
+    root.mkdir()
+    sdk = FakeCodex(CodexConfig(), ['{"answer":"done"}'])
+    sdk.cwd = root
+    session = SessionRef(session_id=str(uuid4()), role="builder")
+    saved = await FakeThread(sdk, session.session_id).read()
+    assert isinstance(saved.thread.cwd, AbsolutePathBuf)
+    assert str(saved.thread.cwd) != str(root)
+    rollout = config.codex_home / "sessions" / f"rollout-{session.session_id}.jsonl"
+    rollout.parent.mkdir(parents=True, exist_ok=True)
+    rollout.write_text("")
+    harness = CodexHarness(config, allow_live=True, worktree=root, sdk_factory=lambda _: sdk)
+    try:
+        result = await harness.run_turn(session, prompt(), Answer, heartbeat=lambda: None)
+        assert result.output.answer == "done"
+        turns = [kwargs for name, kwargs in sdk.calls if name == "turn"]
+        assert len(turns) == 1 and turns[0]["cwd"] == str(root)
+        resume = [kwargs for name, kwargs in sdk.calls if name == "resume"]
+        assert len(resume) == 1 and resume[0]["sandbox"] == Sandbox.workspace_write
+        assert resume[0]["config"]["sandbox_workspace_write.network_access"] is True
+        assert turns[0]["approval_mode"] == ApprovalMode.deny_all
+    finally:
+        await harness.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("reported", ["relative", "missing", "foreign", "unbound"])
+async def test_resume_refuses_untrusted_worktree_before_dispatch(
+    tmp_path: Path, reported: str
+) -> None:
+    config = load_config(Path(__file__).parents[3], home=tmp_path)
+    root = tmp_path / "workspace"
+    root.mkdir()
+    foreign = tmp_path / "other"
+    foreign.mkdir()
+    sdk = FakeCodex(CodexConfig(), ['{"answer":"must not dispatch"}'])
+    sdk.cwd = {
+        "relative": Path("workspace"),
+        "missing": tmp_path / "root='missing'",
+        "foreign": foreign,
+        "unbound": root,
+    }[reported]
+    session = SessionRef(session_id=str(uuid4()), role="builder")
+    rollout = config.codex_home / "sessions" / f"rollout-{session.session_id}.jsonl"
+    rollout.parent.mkdir(parents=True, exist_ok=True)
+    rollout.write_text("")
+    harness = CodexHarness(
+        config,
+        allow_live=True,
+        worktree=None if reported == "unbound" else root,
+        sdk_factory=lambda _: sdk,
+    )
+    try:
+        with pytest.raises(HarnessSessionLostError, match="trusted worktree"):
+            await harness.run_turn(session, prompt(), Answer, heartbeat=lambda: None)
+        assert not any(name == "turn" for name, _ in sdk.calls)
+    finally:
+        await harness.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("role", ["reviewer", "verifier"])
+async def test_readonly_checkout_does_not_replace_builder_worktree(
+    tmp_path: Path, role: str
+) -> None:
+    config = load_config(Path(__file__).parents[3], home=tmp_path)
+    builder_root, readonly_root = tmp_path / "builder", tmp_path / "readonly"
+    builder_root.mkdir()
+    readonly_root.mkdir()
+    sdk = FakeCodex(CodexConfig(), ['{"answer":"reviewed"}', '{"answer":"built"}'])
+    harness = CodexHarness(
+        config, allow_live=True, worktree=builder_root, sdk_factory=lambda _: sdk
+    )
+    try:
+        builder = await harness.start_session(spec(builder_root))
+        readonly = await harness.start_session(
+            spec(readonly_root).model_copy(
+                update={"role": role, "sandbox": "read_only", "network": False}
+            )
+        )
+        await harness.run_turn(readonly, prompt(), Answer, heartbeat=lambda: None)
+        await harness.run_turn(builder, prompt(), Answer, heartbeat=lambda: None)
+        starts = [kwargs for name, kwargs in sdk.calls if name == "start"]
+        assert len(starts) == 2 and starts[1]["sandbox"] == Sandbox.read_only
+        assert starts[1]["config"]["sandbox_workspace_write.network_access"] is False
+        turns = [kwargs for name, kwargs in sdk.calls if name == "turn"]
+        assert [kwargs["cwd"] for kwargs in turns] == [str(readonly_root), str(builder_root)]
+        with pytest.raises(HarnessError, match="trusted worktree"):
+            await harness.start_session(spec(readonly_root))
+        assert sum(name == "start" for name, _ in sdk.calls) == 2
+    finally:
+        await harness.close()
+
+
+@pytest.mark.unit
 async def test_active_resumed_session_is_not_classified_as_lost(tmp_path: Path) -> None:
     config = load_config(Path(__file__).parents[3], home=tmp_path)
     sdk = FakeCodex(CodexConfig(), ['{"answer":"done"}'])

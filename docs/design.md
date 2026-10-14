@@ -289,6 +289,12 @@ Step details:
   in a new server applies it. SDK 0.162.1's turn-level workspace_write preset resets network=false;
   omit that preset after explicitly configuring the thread (D-034). Never inherit old settings
   across a server restart or use the SDK's default auto_review.
+  The CLI supplies the run's trusted worktree to the harness. A cold resume unwraps the SDK's
+  AbsolutePathBuf through `.root`; every turn requires an existing absolute cwd resolving to
+  that worktree before paid dispatch. A fresh session can establish the binding; a cold resume
+  cannot establish it from its own saved metadata. Missing/mismatched paths fail as session loss.
+  Fresh read-only reviewer/verifier sessions separately bind their immutable checkout from the
+  trusted SessionSpec; that never changes the builder's writable root.
 - **Step skills** ship inside the package (`src/lgcw/skills/{build,fix,review,review-security,
   review-tests,verify-finding}/SKILL.md`) and are invoked by exact path, so a same-named skill in
   the target repo cannot shadow them. They describe how to do one step well; they never sequence

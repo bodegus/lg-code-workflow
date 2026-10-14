@@ -85,10 +85,14 @@ class CodexHarness:
         config: WorkflowConfig,
         *,
         allow_live: bool = False,
+        worktree: Path | None = None,
         sdk_factory: Callable[[CodexConfig], AsyncCodex] = AsyncCodex,
         runtime_cleanup: Callable[[Path], Awaitable[None]] = terminate_runtime,
     ) -> None:
         require_live("CodexHarness", allow_live)
+        if worktree is not None and not worktree.is_absolute():
+            raise HarnessError("trusted worktree must be absolute")
+        self._worktree = worktree.resolve() if worktree is not None else None
         self._logger = logging.getLogger(__name__)
         self._config = config
         self._terminate_runtime = runtime_cleanup
@@ -125,6 +129,7 @@ class CodexHarness:
         self._start_lock = asyncio.Lock()
         self._fresh: dict[str, AsyncThread] = {}
         self._specs: dict[str, SessionSpec] = {}
+        self._trusted_cwds: dict[str, Path] = {}
         self._active: dict[str, AsyncTurnHandle | None] = {}
 
     def _cleanup_diagnostic(self, stage: str, error: Exception) -> None:
@@ -180,6 +185,12 @@ class CodexHarness:
         """Start a fresh role with deny-all approvals and the trusted network/sandbox policy."""
         if spec.sandbox != _sandbox(spec.role).name or spec.network != (spec.role == "builder"):
             raise HarnessError("session spec disagrees with role sandbox/network policy")
+        if not spec.cwd.is_absolute() or not spec.cwd.is_dir():
+            raise HarnessError("session cwd must be an existing absolute worktree")
+        if spec.role == "builder":
+            if self._worktree is None:
+                self._worktree = spec.cwd.resolve()
+            self._check_worktree(spec.cwd, self._worktree)
         ReasoningEffort(spec.effort)
         try:
             await self._ensure_started()
@@ -192,6 +203,7 @@ class CodexHarness:
             )
             self._fresh[thread.id] = thread
             self._specs[thread.id] = spec
+            self._trusted_cwds[thread.id] = spec.cwd.resolve()
             return SessionRef(session_id=thread.id, role=spec.role)
         except Exception as exc:
             raise map_error(exc) from exc
@@ -230,7 +242,7 @@ class CodexHarness:
             )
             spec = SessionSpec(
                 role=session.role,
-                cwd=Path(str(saved.thread.cwd)),
+                cwd=Path(saved.thread.cwd.root),
                 sandbox=_sandbox(session.role).name,
                 network=session.role == "builder",
                 effort=effort,
@@ -238,6 +250,10 @@ class CodexHarness:
             )
             self._specs[session.session_id] = spec
         return thread, spec
+
+    def _check_worktree(self, cwd: Path, trusted: Path | None) -> None:
+        if not cwd.is_absolute() or not cwd.is_dir() or trusted is None or cwd.resolve() != trusted:
+            raise HarnessSessionLostError("session cwd differs from the trusted worktree")
 
     async def _collect(
         self, handle: AsyncTurnHandle, heartbeat: Callable[[], None]
@@ -309,6 +325,10 @@ class CodexHarness:
                     raise HarnessSessionLostError(
                         "resumed session has no durable token accounting baseline"
                     )
+                trusted = self._trusted_cwds.get(session.session_id)
+                if trusted is None and session.role == "builder":
+                    trusted = self._worktree
+                self._check_worktree(spec.cwd, trusted)
                 inputs: Input = [
                     SkillInput(name=Path(turn.skill).parent.name, path=turn.skill),
                     TextInput(
