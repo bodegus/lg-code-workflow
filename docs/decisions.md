@@ -1266,3 +1266,21 @@ Reviewer authorization6161650797 permits FakeDoctor to return1 only for the exac
 argv, preserving every existing assertion. Explicit allowed/denied/unavailable cases are added.
 This preserves the current-host D-004 observation, not a general home-isolation guarantee.
 Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behavior. No dependency.
+
+
+## D-040 — First real execution: owner-delegated R1, with retained interruption proof
+
+- **Authority:** Alex directly answered the prepared-issue/create-and-run question with
+  “Proceed with real test!!! Exciting”. This overrides the earlier owner-creation reservation;
+  [operator notice](https://github.com/bodegus/lg-code-workflow/pull/7#issuecomment-6165621941)
+  records it. The builder created family-calendar#26 and ran merged sourceff51b95 unchanged.
+- **Result:** lockfile-only proxy-addr2.0.7→2.0.8, PR27/head478db75, all three required jobs green,
+  actual ci_wait SIGKILL/-9 and resume to one ready receipt. One earlier conservative publication
+  head mismatch required verified operator retry6165770302; API lag is a hypothesis, not a verdict.
+- **Boundary:** no target code edits, merge, default-branch push, test weakening or runtime change
+  by the operator. The same builder receipt survived; one fresh light review executed for deep
+  configuration under D-037. Post-ready rerun leaves durable snapshots unchanged. Human-adoption
+  and recovered publication receipts refer to the same candidate, not additional commits.
+- **Evidence:** [R1 inspection](runs/r1-proxy-addr-26.md) retains actual commands, cost, timeline,
+  local receipt identities and hosted CI links. R1-OBS1..3 carry in the existing backlog; no new
+  dependencies or speculative hardening. R2/R3 and their synthesis remain separate future work.
