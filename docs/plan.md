@@ -20,6 +20,16 @@ markers, so GitHub is the durable state.
 **Spec:** [design.md](design.md) (read it first), decisions in [decisions.md](decisions.md),
 background in [research/README.md](research/README.md).
 
+## Phase 1 prototype priority (owner decision, 2026-10-14)
+
+[Reviewer-relayed owner decision6159291007](https://github.com/bodegus/lg-code-workflow/pull/4#issuecomment-6159291007)
+supersedes the former T16/T17 scope: prove one real issue end to end, then harden from logs.
+Before merge, fix P0/P1 and security-relevant P2s (credentials, protected paths, owner commands,
+wrong bytes and impostor CI). Other P2/P3 findings go in the single Hardening backlog under T17.
+One verifier per fix round; keep fixes small and report a fix exceeding about300lines before
+building it. T14 df82dc9 remains frozen under verification; T16 may start stacked on T15 only
+after the signed and independently verified T14 merge. D-037 records the revised scope.
+
 ## Global Constraints
 
 - Python `>=3.13`; build backend hatchling; package `lgcw` under `src/`; console script `lgcw = "lgcw.cli:main"`.
@@ -534,50 +544,84 @@ record policy changes and the partial provenance live evidence. Full execution r
 Combined T14 R3/T15 R2 qualification:939 units,3 live deselected,96.13% coverage;
 append merge preserves df82dc9 and b3c905f histories and both regression sets.
 
-### Task T16: Nodes — review (with verify) and merge_ready
+### Task T16: Minimal review and merge_ready
 
-**Files:**
-- Create: `src/lgcw/graph/nodes/{review,merge_ready}.py`
-- Create: `tests/graph/test_review_loop.py`, `tests/graph/test_merge_ready.py`, `tests/unit/test_no_merge.py`
+**Files:** `src/lgcw/graph/nodes/{review,merge_ready}.py`,
+`tests/graph/test_review_loop.py`, `tests/graph/test_merge_ready.py`, `tests/unit/test_no_merge.py`.
 
-**Interfaces:**
-- Consumes: `pick_level`, `gate_findings`, `finding_id` (T7); `ReviewPacket`, renderers (T9); `reviewer_checkout`, `diff_text`, `numstat` (T8).
+**Interfaces:** consumes `pick_level`, review models/renderers, `reviewer_checkout`, `diff_text`
+and `numstat`. Execute only none/light. Map configured standard/deep to light and log both levels.
+A light review uses one fresh reviewer session on the diff and publishes findings in one COMMENT
+review. Only P0/P1 block; feed blockers to the existing resumed build → gate → publish → CI path,
+then re-review. The prototype round cap is2, then ask; an explicit retry grants exactly one more.
+`merge_ready` marks ready through GraphQL, switches labels and writes an idempotent ready marker.
+Existing authority, head/content, CI and no-merge invariants remain binding.
 
-- [ ] **Step 1: Write the failing tests**: `test_level_none_goes_straight_to_merge_ready`, `test_light_clean_review_marks_ready_once` (one `mark_ready`, one `ready` marker, labels switched), `test_standard_blocking_finding_fix_and_resolve` (review with one thread and `finding` marker → fix turn names the finding id → publish replies and resolves `ADDRESSED` → CI → re-review packet's `range_from` is the last reviewed SHA → clean → ready), `test_verifier_rejects_finding_no_fix_round`, `test_disputed_finding_reraised_asks`, `test_round_cap_asks_then_retry_grants_one`, `test_deep_runs_three_lenses_in_parallel` (three reviewer sessions), `test_review_after_human_push_asks`, `test_retry_adopts_human_head` (after `/lgcw retry`, a `push` marker with source `human` records the new head and the run continues from CI), `test_merge_ready_conflict_asks`, `test_merge_ready_notes_issue_edit`, and `test_no_merge_calls` (scan `src/` text for `mergePullRequest`, `/merge`, `.merge(`; none).
+- [ ] **Step 1: Write failing tests:** `test_level_none_goes_straight_to_merge_ready`,
+  `test_light_clean_review_marks_ready_once`, `test_blocking_finding_round_trip`,
+  `test_round_cap_asks_then_retry_grants_one`, `test_no_merge_calls`.
 - [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement**; reviewer lenses run with `asyncio.gather`, each on its own fresh session.
+- [ ] **Step 3: Implement** the one-reviewer prototype and once-only readiness writes.
 - [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(graph): review loop and merge-ready`.
+- [ ] **Step 5: Commit** `feat(graph): minimal review loop and merge-ready`.
 
-### Task T17: CLI, doctor, target repo configs, live smoke
+Verifier, disputed findings, thread resolution, interdiff range_from, three-lens deep review and
+review human-push adoption are deferred under the owner decision; see the backlog below.
 
-T14 R3 optional carry, to qualify before the T17 full execution: R3-F6 unused session-loss grant
-accounting; R3-F7 approved claim mismatch feedback/charged gate fix; R3-F8 changed receipt bytes
-ask workspace_changed directly; R3-F9 embedded sk-ant/sk-admin redaction and long task-* names.
-Required R3-F1–F5 remain in T14.
+### Task T17: Minimal CLI, doctor, family-calendar config and live R1
 
-**Files:**
-- Create: `src/lgcw/cli.py`, `src/lgcw/doctor.py`, `config/repos/bodegus__family-calendar.toml`, `config/repos/bodegus__memgo-app.toml`
-- Create: `tests/unit/test_cli.py`, `tests/unit/test_doctor.py`, `tests/live/test_repo_configs.py`, `tests/live/test_smoke_e2e.py`
-- Modify: `README.md` (quickstart)
+**Files:** `src/lgcw/{cli,doctor}.py`, `config/repos/bodegus__family-calendar.toml`,
+`tests/unit/test_cli.py`, `tests/unit/test_doctor.py`, `tests/live/test_repo_configs.py`,
+`tests/live/test_smoke_e2e.py`, README quickstart. memgo-app configuration waits for Phase1bR3.
 
-**Interfaces:**
-- Produces: `main(argv: Sequence[str] | None = None) -> int` with subcommands `doctor [--repo R]`, `run R#N`, `status [R]` (PRs labelled `lgcw:*` with their latest marker), `report R#N`; exit codes `0` merge-ready or success, `2` waiting, `3` blocked or closed, `1` error; `make_context(config: WorkflowConfig, ref: IssueRef) -> RunContext` (the only place real adapters are built with `allow_live=True`); `doctor(config: WorkflowConfig, repo: str | None) -> list[Check]` (`gh auth status`, Codex login via `account()`, `git --version`, each `setup`/`gate` command's first word on `PATH`, `LGCW_HOME` writable).
+**Interfaces:** `main(argv: Sequence[str] | None = None) -> int` with doctor, run R#N and report R#N;
+exit0 success/merge-ready,2 waiting,3 blocked/closed,1 error. `make_context(config, ref) -> RunContext`
+is the sole real-adapter allow_live=True construction boundary. `doctor(config, repo) -> list[Check]`
+checks gh login, Codex account login without a model turn, git, configured tools and writable home.
 
-- [ ] **Step 1: Write the failing tests**: CLI parsing and exit codes with an injected fake context; doctor with a fake `PATH` missing `npm` reports it; live `test_repo_configs` checks each configured `(workflow, job)` appears in the target repo's recent runs.
+- [ ] **Step 1: Write failing tests:** CLI parsing/exit codes with injected fake context;
+  doctor missing npm; live configured workflow/job identity on real recent family-calendar runs.
 - [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement**; write the two repo configs from their real CI files (family-calendar jobs `Node 24.20.0`, `Node 26.8.1`, `Container build and smoke test` — confirm; memgo-app's `required` aggregator job — confirm); family-calendar `setup = ["npm ci"]`, `gate = ["npm run check"]`; memgo-app `setup = ["uv sync --all-packages"]`, `gate = ["uv run ruff check apps tests", "uv run pytest tests/ -m unit -q"]` (confirm against its Makefile).
-- [ ] **Step 4: Run** `make check` → PASS. Live smoke (builder, with the owner's go-ahead on the PR): create an issue on the sandbox repo ("add a `--version` flag", with acceptance criteria), `uv run lgcw run bodegus/oc2-publish-sandbox#<n>`, kill it once during `ci_wait`, rerun, reach merge-ready; `uv run lgcw report …`; paste the report summary in the PR.
-- [ ] **Step 5: Commit** `feat(cli): doctor, run, status, report; target repo configs`.
+- [ ] **Step 3: Implement** run/report/doctor and the family-calendar config from its actual CI:
+  Node24.20.0, Node26.8.1, Container build and smoke test (re-confirm); setup npm ci, gate npm run check.
+- [ ] **Step 4: Run** `make check` → PASS. The live smoke is Phase1bR1, the family-calendar
+  proxy-addr production-audit fix. Once Alex has created its issue, run
+  `uv run lgcw run bodegus/family-calendar#<n>`, kill once during ci_wait, rerun to merge-ready,
+  and retain report/usage/CI/side-effect receipts proving no duplicate dispatch or publication.
+  Proposed owner-created issue text: [R1 issue proposal](requests/r1-proxy-addr-issue.md).
+- [ ] **Step 5: Commit** `feat(cli): doctor, run, report and family-calendar live smoke`.
+
+#### Hardening backlog
+
+Non-blocking items are recorded here, one line per review ID/source, for prioritization from the
+first real run logs. Local optional work is preserved separately; it does not change df82dc9.
+
+- R3-F6 (PR4): unused granted session-loss marker can allow one extra fresh session/paid turn.
+- R3-F7 (PR4): approved handoff/diff mismatch should feed exact paths to a charged gate fix.
+- R3-F8 (PR4): changed builder receipt should ask workspace_changed directly, avoiding approval again.
+- R3-F9 (PR4): embedded sk-ant/sk-admin keys and long task-* name redaction need correction.
+- 6159291252/flaky (PR5): trim duplicates pytest summaries and the runner exit line prevents real flaky reruns.
+- 6159291252/head-override (PR5): fix-after-rerun override covers all failures on the head.
+- 6159291252/base-404 (PR5): qualify the workflow-specific base-run404 behavior.
+- 6159291252/stacked-PR (PR5): qualify association counting for stacked pull requests.
+- 6159291252/limits-docs (PR5): reconcile the dead per-head guard, configuration and documentation.
+- R2-F12 (PR5): real runner-loss and literal printed-::error live specimens remain unavailable.
+- 6159291007/verifier: defer the fresh finding-verifier step until after first-run evidence.
+- 6159291007/disputes: defer disputed-finding handling until after first-run evidence.
+- 6159291007/threads: defer finding-thread resolution until after first-run evidence.
+- 6159291007/interdiff: defer last-reviewed range_from packets until after first-run evidence.
+- 6159291007/deep: defer three parallel deep-review lenses; log configured-to-light mapping meanwhile.
+- 6159291007/human-adoption: defer review-specific human-push adoption; preserve head-move safeguards.
+- 6159291007/status: defer CLI status; prototype exposes run, report and doctor.
 
 ---
 
 ## Phase 1b — three runs and inspection (owner and agent together)
 
-Each run: the owner writes the issue (with acceptance criteria) and runs `uv run lgcw run <ref>`;
-an agent then uses the `inspecting-runs` skill and writes `docs/runs/<id>.md`.
+Each run: the owner writes the issue (with acceptance criteria). The builder executes an
+authorized `uv run lgcw run <ref>`, then uses `inspecting-runs` and writes `docs/runs/<id>.md`.
 
-- [ ] **R1 simple (expected level: light):** family-calendar — update the transitive `proxy-addr` dependency so `npm audit --omit=dev --audit-level=high` passes (it currently fails CI on every open PR). Watch: dependency change with builder network; CI green proves it.
+- [ ] **R1 simple (T17 live smoke; manifest risk configured deep, executed light under D-037):** family-calendar — update the transitive `proxy-addr` dependency so `npm audit --omit=dev --audit-level=high` passes (it currently fails CI on every open PR). Watch: dependency change with builder network; CI green proves it.
 - [ ] **R2 medium (expected: standard):** a family-calendar feature chosen by the owner.
 - [ ] **R3 complex (expected: deep):** a memgo-app feature chosen by the owner (candidates: bodegus/memgo-app#262, #261, #197). Watch: 12–32 minute CI on self-hosted runners, the known Mongo flake (bodegus/memgo-app#192), the long-wait cache question.
 - [ ] **Synthesis:** `docs/runs/phase-2-priorities.md` — the improvement areas ranked by cost, failures and owner effort, with evidence from the three runs. This ranking replaces the Phase 2 list below where they differ.

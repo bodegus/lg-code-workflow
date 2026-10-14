@@ -1114,3 +1114,29 @@ must qualify its own metadata. Zero model turns/GitHub writes; exact transcript 
   repaired latest_base_jobs read returned run38473073579/check/success, zero models/writes.
   Transcript: docs/spikes/2026-10-14-base-workflow.md. A malformed step list missing numbers also
   cannot claim complete observation; its negative regression failed before tightening the flag.
+
+
+## D-037 — Owner-directed prototype-first Phase 1 scope
+
+- **Authority:** reviewer-relayed owner decision PR4 comment6159291007 (2026-10-14), applied to
+  T15 by6159291252; follow-up6159336971 freezes df82dc9 and keeps optional R3-F6..F9 off PR4.
+- **Merge bar:** P0/P1 and security-relevant P2s in scope block (credentials, protected paths,
+  owner-command authority, wrong bytes, impostor CI). Other P2/P3 items are one-line entries in
+  the single T17 Hardening backlog. One verifier per fix round; report fixes exceeding about
+  300lines instead of expanding them. No invariant, assertion, timeout or lane is relaxed.
+- **T16 replacement:** none/light only, one fresh reviewer and one COMMENT review, P0/P1 blockers
+  resume the existing build/gate/publish/CI path, re-review, cap2 then ask (explicit retry +1).
+  Configured standard/deep executes light with a logged mapping. Ready mutation/labels/marker
+  remain once-only and no merge endpoint exists. Verifier/disputes/thread resolution/interdiff/
+  three-lens deep/review-specific human adoption wait for evidence after first runs.
+- **T17 replacement:** run/report/doctor, family-calendar only; memgo-app waits for Phase1bR3.
+  The live smoke is Phase1bR1 proxy-addr audit repair, once Alex creates the issue. Keep the
+  ci_wait kill/rerun proof and actual run report/usage/CI/side-effect receipts. The source/CI
+  evidence so far does not prove that real execution.
+- **Preserved optional work:** local branch codex/t17-hardening-r3-local holds four reproduced
+  optional T14 fixes; no push to df82dc9. It is brought into T17 as directed, rather than
+  restarting current verification. The new backlog supersedes earlier promises to finish all
+  non-security hardening before the first prototype run.
+- **Why:** the owner prioritizes the working issue-to-merge-ready path over successive edge-case
+  review rounds. This revises the implementation scope, not the overall requested end state:
+  a real CLI execution must still create a qualified merge-ready PR and survive the ci_wait restart.

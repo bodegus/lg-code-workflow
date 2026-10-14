@@ -1,5 +1,12 @@
 # lg-code-workflow — design
 
+> Phase1 prototype override (D-037; owner decision6159291007): T16 executes none/light reviews,
+> maps standard/deep to light with a log, blocks only P0/P1 and marks ready once. Advanced review
+> features below are deferred. T17 is run/report/doctor plus family-calendar R1 and kill/resume;
+> hardening is prioritized from real logs. Authority, credentials, content and no-merge invariants
+> remain unchanged.
+
+
 Status: **agreed direction, 2026-10-13** (approach A, PR as the run's record, Phase 1 on the Mac).
 Owner: Alex (`bodegus`). Research: [research/README.md](research/README.md). Plan: [plan.md](plan.md).
 Decisions with evidence: [decisions.md](decisions.md).
