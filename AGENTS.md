@@ -120,7 +120,11 @@ the builder within the task's scope; scope or design disputes go to the owner.
 ## How to work
 
 - One plan task per PR. Branch `<agent>/<task-id>-<slug>` (e.g. `codex/t05-ci-classifier`).
-- Test first (superpowers:test-driven-development if available). Run `make check` before every push.
+- Test code changes first (superpowers:test-driven-development if available). Run `make check`
+  before pushes that change code, tests, dependencies, executable workflows or runtime config.
+- Documentation-only changes (README, `docs/`, contributor guidance) need only relevant normal
+  pre-commit lint checks; verify diagrams render. Do not run unit or live suites for docs-only
+  changes. Packaged agent skills, test fixtures and runtime configuration still use the full gate.
 - PR body: the sections in `.github/pull_request_template.md`. "Tested how" shows the commands and
   their output, not a summary; the builder proves every task runs locally.
 - In the same PR: tick the task's checkboxes in `docs/plan.md`; add or update `docs/decisions.md`

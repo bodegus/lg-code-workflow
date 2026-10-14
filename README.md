@@ -42,6 +42,67 @@ the builder. Automatic retries are bounded, and the PR records progress so a CLI
 recorded step. An owner response returns to the paused step, which may be validation rather than a
 new builder turn. A separate authorized reviewer handles merging.
 
+### Progression by role
+
+This swimlane view shows who acts and the order of a typical cycle. Owner questions can pause any
+stage; a CLI rerun resumes the recorded step. Fixes return to the same builder, while each review
+uses a fresh reviewer session.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Owner
+    participant GitHub
+    participant Workflow as Local workflow
+    participant Builder as Codex builder
+    participant CI as Hosted CI
+    participant Reviewer as Fresh Codex reviewer
+
+    Owner->>GitHub: Create issue with acceptance criteria
+    Owner->>Workflow: Start CLI for the issue
+    Workflow->>GitHub: Read issue, prepare draft PR
+
+    loop Build, validate and review until accepted or a limit is reached
+        Workflow->>Builder: Build or fix; resume builder for fixes
+        Builder-->>Workflow: Changes and structured handoff
+        Workflow->>Workflow: Check actual changes and protected paths
+
+        opt Owner answer or protected-file approval required
+            Workflow->>GitHub: Record question and paused step
+            GitHub-->>Owner: Proposal or question with evidence
+            Owner->>GitHub: Answer or approve the exact proposal
+            Owner->>Workflow: Rerun CLI
+            Workflow->>GitHub: Read answer and resume recorded step
+        end
+
+        Workflow->>Workflow: Run local tests
+        alt Local gate passes
+            Workflow->>GitHub: Publish commit with exact lease
+            GitHub->>CI: Run PR checks
+            CI-->>GitHub: Report check results
+            Workflow->>GitHub: Poll checks for the exact head
+            GitHub-->>Workflow: CI results
+            alt CI passes
+                Workflow->>Reviewer: Review immutable checkout in fresh session
+                Reviewer-->>Workflow: Findings or acceptance
+                Workflow->>GitHub: Record review and any findings
+                Note over Workflow,Builder: Blocking findings return to the next fix cycle
+            else CI needs a fix
+                Note over Workflow,Builder: CI feedback returns to the next fix cycle
+            end
+        else Local gate needs a fix
+            Note over Workflow,Builder: Local test feedback returns to the next fix cycle
+        end
+    end
+
+    alt Accepted with required checks passing
+        Workflow->>GitHub: Mark PR merge-ready
+        Note over Owner,GitHub: A separate authorized reviewer handles merging
+    else Blocked or limit reached
+        Workflow->>GitHub: Record owner question and retain draft PR
+    end
+```
+
 | Read | For |
 |---|---|
 | [AGENTS.md](AGENTS.md) | working rules and role boundaries |
