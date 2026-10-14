@@ -234,7 +234,9 @@ Step details:
   without explicit `lgcw-allow: <path>` lines in the frozen issue → `ask`. Each line names one
   exact relative path in a standalone paragraph outside HTML comments, script/pre blocks and
   Markdown code fences. Line breaks are LF/CR/CRLF only; other Unicode separators are prose. Ordinary mentions,
-  denial sentences and hidden text never pre-authorize paths. The question carries exact paths
+  denial sentences and hidden text never pre-authorize paths. Any raw line starting with optional
+  spaces/tabs then < disables pre-authorization for the whole issue body; protected changes
+  always ask in that case (D-035 R4). The question carries exact paths
   and a content fingerprint; only its authenticated `answer approve` acknowledges that proposal.
   Only the latest answered protected-path question counts; a later denial revokes an earlier
   approval even if old bytes return. A later allowed-author command also revokes an already

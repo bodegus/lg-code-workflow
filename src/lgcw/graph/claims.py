@@ -26,6 +26,8 @@ class ClaimsResult(Strict):
 
 def explicit_allowed_paths(body: str) -> set[str]:
     """Read standalone allow paragraphs using CommonMark line and fence boundaries."""
+    if any(re.match(r"[ \t]*<", line) for line in re.split(r"\r\n|\r|\n", body)):
+        return set()
 
     def hide(match: re.Match[str]) -> str:
         return re.sub(r"[^\r\n]", " ", match[0])

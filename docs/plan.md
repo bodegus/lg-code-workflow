@@ -520,6 +520,10 @@ later command revocation before continuation/after gate/before push, CommonMark 
 restored-parent rebuild prompt are proved in docs/validation/2026-10-14-t14-r3.md. D-035 R3
 records the accepted creator/editor residual and optional carry to T17.
 
+T14 R4 sole security blocker: two-line whole-body HTML refusal,34 focused cases and5/5
+guard removals caught; full835 units/2 live deselected/96.06%. Transcript in
+docs/validation/2026-10-14-t14-r4.md. V-NEW/V-P3 findings carry to the T16 backlog.
+
 ### Task T15: Node — ci_wait
 
 **Files:**
