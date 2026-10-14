@@ -10,6 +10,7 @@ from lgcw.graph.context import RunContext
 from lgcw.graph.nodes.common import attention, finish_command, observe, post_once
 from lgcw.graph.nodes.work import (
     check_work_claims,
+    claims_interruption,
     current_parent,
     latest_build,
     latest_gate,
@@ -42,13 +43,16 @@ async def gate(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
     operation = fingerprint("gate", build.operation_id, str(command_id))
     previous = latest_gate(state, build.operation_id)
     if previous is not None and previous.phase == "complete":
+        await finish_command(ctx, state, state.pr.number)
+        obs = await observe(ctx, state.pr)
+        fields: dict[str, Any] = {"ledger": obs.ledger, "owner_command": None}
         if previous.tree_fingerprint != await ctx.workspace.worktree_fingerprint(parent):
-            return attention(
+            return fields | attention(
                 "workspace_changed",
                 "Work changed after its measured gate; inspect and retry.",
                 "build",
             )
-        return {
+        return fields | {
             "handoff": build.handoff,
             "feedback": previous.feedback,
             "next_step": "publish" if previous.code == 0 and previous.feedback is None else "build",
@@ -70,6 +74,9 @@ async def gate(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
             "build",
         )
     claims = await check_work_claims(state, ctx, build.handoff, parent)
+    interrupted = await claims_interruption(claims, state, ctx)
+    if interrupted is not None:
+        return interrupted
     if claims.ask is not None:
         return {"ask": claims.ask, "next_step": "ask"}
     if claims.feedback is not None:
@@ -151,6 +158,9 @@ async def gate(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
         "feedback": feedback,
         "owner_command": None,
     }
+    interrupted = await claims_interruption(claims, state, ctx)
+    if interrupted is not None:
+        return fields | interrupted
     if claims.ask is not None:
         return fields | {"ask": claims.ask, "next_step": "ask"}
     return fields | {"next_step": "publish" if result.ok and feedback is None else "build"}

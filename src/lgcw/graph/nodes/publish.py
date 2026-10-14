@@ -9,7 +9,14 @@ from langgraph.runtime import Runtime
 from lgcw.github.render import PrStatus, render_pr_body
 from lgcw.graph.context import RunContext
 from lgcw.graph.nodes.common import attention, finish_command, observe, post_once
-from lgcw.graph.nodes.work import latest_build, latest_gate, latest_publish, load_work
+from lgcw.graph.nodes.work import (
+    check_work_claims,
+    claims_interruption,
+    latest_build,
+    latest_gate,
+    latest_publish,
+    load_work,
+)
 from lgcw.graph.retry import retry_ask
 from lgcw.ledger.markers import fingerprint, render_marker
 from lgcw.models.handoff import BuildHandoff
@@ -96,7 +103,7 @@ async def restore_publication(
     if proposed.phase == "abandoned":
         return proposed, {
             "feedback": Feedback(
-                source="owner",
+                source="rebuild",
                 summary="Rebuild from the restored published parent; "
                 "the rejected candidate is preserved.",
                 data=None,
@@ -173,7 +180,7 @@ async def restore_publication(
         return proposed, {
             "ledger": obs.ledger,
             "feedback": Feedback(
-                source="owner",
+                source="rebuild",
                 summary="Rebuild from the restored published parent; "
                 "the rejected candidate is preserved.",
                 data=None,
@@ -288,6 +295,12 @@ async def publish(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
         return await workspace_question(state, ctx, parent, committed=True)
     remote = await ctx.github.branch_head(ctx.issue_ref.repo, state.pr.head_ref)
     if remote == parent:
+        claims = await check_work_claims(state, ctx, build.handoff, parent)
+        interrupted = await claims_interruption(claims, state, ctx)
+        if interrupted is not None:
+            return interrupted
+        if claims.ask is not None:
+            return {"ask": claims.ask, "next_step": "ask"}
         observed = await ctx.workspace.push(
             state.pr.head_ref, parent, ctx.push_auth(), head_sha=head
         )

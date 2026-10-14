@@ -33,6 +33,7 @@ class RecordingWorkspace(GitWorkspace):
         self.crash_after: str | None = None
         self.before_push: Callable[[], Awaitable[None]] | None = None
         self.after_push: Callable[[str], None] | None = None
+        self.after_commands: Callable[[], Awaitable[None]] | None = None
 
     def _done(self, name: str) -> None:
         if self.crash_after == name:
@@ -96,5 +97,8 @@ class RecordingWorkspace(GitWorkspace):
     ) -> CommandResult:
         result = await super().run_commands(cwd, commands, timeout_s, log_path)
         self.command_runs.append(tuple(commands))
+        if self.after_commands is not None:
+            callback, self.after_commands = self.after_commands, None
+            await callback()
         self._done("run_commands")
         return result

@@ -7,7 +7,7 @@ import hashlib
 import re
 from collections.abc import Mapping, Sequence
 
-from lgcw.models.approval import ProtectedApproval
+from lgcw.models.approval import ApprovalRevocation, ProtectedApproval
 from lgcw.models.base import Strict
 from lgcw.models.config import RepoConfig
 from lgcw.models.handoff import BuildHandoff
@@ -21,17 +21,24 @@ class ClaimsResult(Strict):
     ok: bool
     feedback: Feedback | None
     ask: PendingAsk | None
+    revocation: ApprovalRevocation | None = None
 
 
 def explicit_allowed_paths(body: str) -> set[str]:
-    """Read one-path allow lines outside HTML comments and Markdown code fences."""
-    visible = re.sub(r"<!--[\s\S]*?(?:-->|$)", "\n", body)
-    allowed: set[str] = set()
+    """Read standalone allow paragraphs using CommonMark line and fence boundaries."""
+
+    def hide(match: re.Match[str]) -> str:
+        return re.sub(r"[^\r\n]", " ", match[0])
+
+    visible = re.sub(r"<!--[\s\S]*?(?:-->|$)", hide, body)
+    visible = re.sub(r"<(script|pre)\b[^>]*>[\s\S]*?(?:</\1[ \t]*>|$)", hide, visible, flags=re.I)
+    lines = re.split(r"\r\n|\r|\n", visible)
+    candidates: dict[int, str] = {}
     fence_char, fence_length = "", 0
-    for line in visible.splitlines():
+    for index, line in enumerate(lines):
         if fence_char:
             if re.fullmatch(
-                r" {0,3}" + re.escape(fence_char) + "{" + str(fence_length) + r",}\s*", line
+                r" {0,3}" + re.escape(fence_char) + "{" + str(fence_length) + r",}[ \t]*", line
             ):
                 fence_char, fence_length = "", 0
             continue
@@ -41,7 +48,18 @@ def explicit_allowed_paths(body: str) -> set[str]:
             continue
         match = re.fullmatch(r"lgcw-allow: ([A-Za-z0-9_.@/+\-]+)", line)
         if match:
-            allowed.add(match[1])
+            candidates[index] = match[1]
+    allowed: set[str] = set()
+    for start in candidates:
+        if start - 1 in candidates:
+            continue
+        end = start
+        while end + 1 in candidates:
+            end += 1
+        before = start == 0 or re.fullmatch(r"[ \t]*", lines[start - 1]) is not None
+        after = end == len(lines) - 1 or re.fullmatch(r"[ \t]*", lines[end + 1]) is not None
+        if before and after:
+            allowed.update(candidates[index] for index in range(start, end + 1))
     return allowed
 
 

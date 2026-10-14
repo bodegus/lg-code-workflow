@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from lgcw.models.base import Strict
+from lgcw.models.ledger import Command
 
 
 class ProtectedApproval(Strict):
@@ -10,3 +11,10 @@ class ProtectedApproval(Strict):
 
     paths: tuple[str, ...]
     tree_fingerprint: str
+
+
+class ApprovalRevocation(Strict):
+    """A later authenticated command cancelling an earlier question's permission."""
+
+    seq: int
+    command: Command

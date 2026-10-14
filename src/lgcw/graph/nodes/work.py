@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from lgcw.git.port import WorkspaceInfo
 from lgcw.graph.claims import ClaimsResult, check_claims
 from lgcw.graph.context import RunContext
-from lgcw.graph.nodes.common import observe
-from lgcw.models.approval import ProtectedApproval
+from lgcw.graph.nodes.common import finish_command, observe, post_once, sanitized
+from lgcw.ledger.commands import owner_commands
+from lgcw.models.approval import ApprovalRevocation, ProtectedApproval
 from lgcw.models.handoff import BuildHandoff
 from lgcw.models.ledger import AckMarker, AskMarker, BuildMarker, GateMarker, PublishMarker
-from lgcw.models.state import RunState
+from lgcw.models.state import PendingAsk, RunState
 
 
 async def load_work(state: RunState, ctx: RunContext) -> tuple[RunState, WorkspaceInfo | None]:
@@ -78,31 +81,47 @@ async def check_work_claims(
     if state.issue is None:
         raise ValueError("claims require frozen issue")
     approval: ProtectedApproval | None = None
+    approved_ack: AckMarker | None = None
+    observations = await observe(ctx, state.pr)
     questions = {
         entry.marker.seq: entry.marker
-        for entry in state.ledger.entries
+        for entry in observations.ledger.entries
         if isinstance(entry.marker, AskMarker)
     }
-    for entry in state.ledger.entries:
-        ack = entry.marker
-        if not isinstance(ack, AckMarker):
-            continue
-        question = questions.get(ack.seq)
-        if question is None or question.code != "protected_path":
-            continue
-        # Every later answer/retry supersedes the earlier proposal, including a denial.
-        approval = None
+    latest = next(
+        (
+            entry.marker
+            for entry in reversed(observations.ledger.entries)
+            if isinstance(entry.marker, AckMarker)
+            and entry.marker.seq in questions
+            and questions[entry.marker.seq].code == "protected_path"
+        ),
+        None,
+    )
+    if latest is not None:
+        question = questions[latest.seq]
         if (
-            ack.verb == "answer"
-            and ack.command_snapshot is not None
-            and ack.command_snapshot.text.strip() == "approve"
+            latest.verb == "answer"
+            and latest.command_snapshot is not None
+            and latest.command_snapshot.text.strip() == "approve"
             and question.protected_paths
             and question.tree_fingerprint is not None
+            and latest.step == question.step
         ):
             approval = ProtectedApproval(
                 paths=question.protected_paths, tree_fingerprint=question.tree_fingerprint
             )
-    return check_claims(
+            approved_ack = latest
+    revocation = None
+    if approved_ack is not None:
+        later = owner_commands(
+            observations.comments, ctx.repo.allowed_authors, approved_ack.command_id
+        )
+        if later:
+            command = next((command for command in later if command.verb == "abort"), later[-1])
+            revocation = ApprovalRevocation(seq=approved_ack.seq, command=sanitized(command))
+            approval = None
+    result = check_claims(
         handoff,
         await ctx.workspace.changed_paths(parent),
         ctx.repo,
@@ -110,3 +129,40 @@ async def check_work_claims(
         tree_fingerprint=await ctx.workspace.worktree_fingerprint(parent),
         approval=approval,
     )
+    return result.model_copy(update={"revocation": revocation})
+
+
+async def claims_interruption(
+    result: ClaimsResult, state: RunState, ctx: RunContext
+) -> dict[str, Any] | None:
+    """Acknowledge revocation before asking again or making an abort terminal."""
+    revoked = result.revocation
+    if revoked is None:
+        return None
+    if state.pr is None:
+        raise ValueError("protected approval requires a PR")
+    command = revoked.command
+    await post_once(
+        ctx,
+        state.pr.number,
+        AckMarker(
+            seq=revoked.seq,
+            command_id=command.comment_id,
+            verb=command.verb,
+            step="blocked" if command.verb == "abort" else "build",
+            command_snapshot=command,
+            adopt=None,
+        ),
+        "Later owner command revoked protected-path approval.",
+    )
+    await finish_command(ctx, state, state.pr.number)
+    continuation = state.model_copy(update={"owner_command": command})
+    if command.verb == "abort":
+        return {"owner_command": command, "next_step": "blocked", "ask": None}
+    await finish_command(ctx, continuation, state.pr.number)
+    question = result.ask or PendingAsk(
+        code="protected_path",
+        return_to="build",
+        question="Owner revoked protected-path approval; inspect the proposal and answer again.",
+    )
+    return {"owner_command": None, "ask": question, "next_step": "ask"}

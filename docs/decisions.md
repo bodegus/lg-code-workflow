@@ -910,6 +910,44 @@ our own code. Research references point into [research/](research/).
   in docs/validation/2026-10-14-t14-r2.md. No paid/live run is needed for these deterministic
   corrections. No merge, default push, force-push, assertion/timeout/lane weakening or gate waiver.
 
+### D-035 R3 — recovery, revocation and CommonMark scope (review6158686710)
+
+- **Gate crash:** an approve continuation may reuse its builder result only before any gate
+  record exists. A complete gate receipt finishes the restored command and clears owner_command
+  before routing; a crash after receipt cannot create an approval gate/build cycle. Runner tracks
+  bounded hashes of observed node/state pairs; repeated state or GraphRecursionError posts a
+  node_error ask through the normal durable question writer. The old command is finished after
+  that ask exists, so retry and abort remain usable. No paid dispatch or push on the safety path.
+- **Revocation:** select the latest protected-question acknowledgement as a unit, requiring exact
+  answer approve, matching question route, paths and content fingerprint. Also read current
+  allowed-author unmarked commands after that approval. Any later command revokes it before a
+  build/gate continuation, after the long gate and immediately before push. Journal the revoking
+  command against its question; denial/retry asks again, abort routes to the terminal blocked node.
+  Frozen ack snapshots remain authoritative for already-acked text; edited old comments cannot
+  rewrite them. A non-allowed author or workflow-marker-bearing comment cannot revoke or approve.
+- **Parser:** use only CRLF/CR/LF line breaks; require a standalone paragraph of full allow lines,
+  with actual blank line/body boundaries. Mask HTML comments (including unterminated ones) and
+  script/pre blocks while preserving line boundaries. Respect fence character and opening length.
+  Soft-wrapped prose, lazy blockquotes and Unicode separators cannot manufacture allow lines.
+- **Rebuild:** restored-parent feedback has its own code source rebuild, taking precedence over
+  stale persisted feedback. Its prompt states the restoration instruction and clears the old
+  handoff's reset-file claims. Stale owner pending feedback remains filtered; current authenticated
+  owner instructions still use the trusted suffix. This is a new build, not an accidental gate-fix
+  charge just because the restore instruction was code-produced.
+- **Accepted command residual (no code):** a command's owner is its GitHub creator, not its last
+  editor. Someone with write access could edit the owner's post-ask denial into approve before
+  acknowledgement. That is in the same accepted authority class as the shared owner-gh identity;
+  no editor-identity guarantee is claimed. Acked text is frozen and later edits do not change it.
+- **Optional carry explicitly to T17:** R3-F6 unused granted session-loss accounting can allow one
+  extra fresh session after a marker-only crash; R3-F7 approved claim mismatch should route its
+  exact path feedback to a charged gate fix; R3-F8 changed builder receipt should ask
+  workspace_changed directly; R3-F9 embedded sk-ant/sk-admin keys and long task-* names need the
+  specified redaction corrections. These are tracked in the T17 plan before full live execution.
+- **Qualification:** docs/validation/2026-10-14-t14-r3.md. All mutation probes use a unique
+  --basetemp per mutant; setup/import failures do not count as kills. No new dependencies, model
+  turns, GitHub live writes or permission widening.
+
+
 ## D-036 — CI observation, required-policy union and rerun intent
 
 - **Decided:** T15, 2026-10-13. The CI node contains no LLM dispatch. Poll exact-head latest
