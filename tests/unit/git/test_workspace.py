@@ -484,3 +484,20 @@ async def test_push_uses_audited_commit_when_local_head_changes_before_exec(
     assert await workspace.push(BRANCH, initial, AUTH) == audited
     assert await checked(remote.bare, "rev-parse", BRANCH) == audited
     assert await workspace.head_sha() == other
+
+
+@pytest.mark.unit
+async def test_commit_paths_ignore_unpublished_edits_and_untracked_work(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    (info.repo_dir / "app.py").write_text("VERSION = '0.1.1'\n")
+    head = await workspace.commit_all("published candidate", {})
+    assert head is not None
+    (info.repo_dir / "AGENTS.md").write_text("unpublished tracked edit\n")
+    path = info.repo_dir / ".github/workflows/unpublished.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text("unpublished workflow\n")
+    assert await workspace.commit_paths(remote.base, head) == ("app.py",)
+    assert "AGENTS.md" in await workspace.changed_paths(remote.base)
+    assert path.read_text() == "unpublished workflow\n"

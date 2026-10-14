@@ -229,6 +229,19 @@ class CiMarker(Strict):
     klass: CiClass | None
     action: CiAction
     fingerprint: str | None
+    run_id: int | None = None
+    run_attempt: int | None = None
+
+
+class RerunMarker(Strict):
+    """Write-ahead rerun request, recovered by its exact run/next-attempt identity."""
+
+    kind: Literal["rerun"] = "rerun"
+    operation_id: str
+    head_sha: str
+    run_id: int
+    from_attempt: int
+    phase: Literal["intent", "accepted"]
 
 
 class ReviewMarker(Strict):
@@ -307,6 +320,7 @@ type Marker = Annotated[
     | SessionMarker
     | PushMarker
     | CiMarker
+    | RerunMarker
     | ReviewMarker
     | FindingMarker
     | AskMarker

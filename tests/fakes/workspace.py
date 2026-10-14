@@ -32,6 +32,7 @@ class RecordingWorkspace(GitWorkspace):
         self.command_runs: list[tuple[str, ...]] = []
         self.crash_after: str | None = None
         self.before_push: Callable[[], Awaitable[None]] | None = None
+        self.after_push: Callable[[str], None] | None = None
         self.after_commands: Callable[[], Awaitable[None]] | None = None
 
     def _done(self, name: str) -> None:
@@ -76,6 +77,8 @@ class RecordingWorkspace(GitWorkspace):
         result = await super().push(branch, expected_remote_sha, auth, head_sha=head_sha)
         self.github.branch_heads[(self.repo, branch)] = result
         self.pushes.append(result)
+        if self.after_push is not None:
+            self.after_push(result)
         self._done("push")
         return result
 

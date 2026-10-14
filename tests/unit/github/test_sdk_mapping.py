@@ -115,3 +115,41 @@ def test_sdk_run_missing_name_falls_back_to_workflow_path() -> None:
     )
     sdk = WorkflowRun.model_validate(raw)
     assert _run_from_rest(_rest_data(sdk)).workflow == ".github/workflows/ci.yml"
+
+
+@pytest.mark.unit
+def test_sdk_required_rule_contexts_keep_non_default_policy() -> None:
+    from githubkit_schemas.v2026_03_10.models import RepositoryRuleDetailedOneof8
+
+    from lgcw.github.client import required_contexts_from_rule
+
+    sdk = RepositoryRuleDetailedOneof8.model_validate(
+        {
+            "type": "required_status_checks",
+            "parameters": {
+                "required_status_checks": [{"context": "security", "integration_id": 15368}],
+                "strict_required_status_checks_policy": True,
+            },
+        }
+    )
+    assert required_contexts_from_rule(_rest_data(sdk)) == ("security",)
+    assert required_contexts_from_rule({"type": "pull_request"}) == ()
+    with pytest.raises(KeyError):
+        required_contexts_from_rule(
+            _rest_data(RepositoryRuleDetailedOneof8(type="required_status_checks"))
+        )
+
+
+@pytest.mark.unit
+def test_required_context_cannot_be_satisfied_by_another_app() -> None:
+    from lgcw.github.client import required_contexts_from_rule
+
+    with pytest.raises(ValueError, match="unsupported required-check app"):
+        required_contexts_from_rule(
+            {
+                "type": "required_status_checks",
+                "parameters": {
+                    "required_status_checks": [{"context": "security", "integration_id": 999999}],
+                },
+            }
+        )

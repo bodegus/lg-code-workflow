@@ -1,0 +1,83 @@
+{
+  "repo": "bodegus/family-calendar",
+  "run": 38441965084,
+  "job": 115450536348,
+  "annotations": [
+    {
+      "path": ".github",
+      "message": "Process completed with exit code 1."
+    },
+    {
+      "path": ".github",
+      "message": "\"The ubuntu-latest label will migrate to Ubuntu 26 beginning October 19, 2026. For more information, see https://github.com/actions/runner-images/issues/14748\""
+    }
+  ],
+  "service_output": "\n\n",
+  "steps": [
+    {
+      "number": 1,
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "number": 2,
+      "name": "Check out repository",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "number": 3,
+      "name": "Set up Node.js",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "number": 4,
+      "name": "Set up npm",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "number": 5,
+      "name": "Run npm ci",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "number": 6,
+      "name": "Run npm run check",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "number": 7,
+      "name": "Audit production dependencies",
+      "status": "completed",
+      "conclusion": "failure"
+    },
+    {
+      "number": 13,
+      "name": "Post Set up Node.js",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "number": 14,
+      "name": "Post Check out repository",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "number": 15,
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "steps_observed": true,
+  "literal_error_command_in_downloaded_log": false,
+  "runner_loss": false,
+  "model_turns": 0,
+  "github_writes": 0
+}

@@ -107,7 +107,7 @@ async def execute(ctx: RunContext) -> RunOutcome:
 
     mapping: dict[Step, NodeFn] = {step: checkpoint for step in STEPS if step != "end"}
     mapping.update(DEFAULT_NODES)
-    mapping.update({"build": build, "gate": gate, "publish": publish})
+    mapping.update({"build": build, "gate": gate, "publish": publish, "ci_wait": checkpoint})
     return await run_issue(ctx, nodes=mapping)
 
 

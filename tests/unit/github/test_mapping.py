@@ -60,3 +60,14 @@ def test_issue_null_pull_request_field_is_not_a_pr() -> None:
     # SDK dumps include optional default fields even when the wire response omitted them.
     raw = _fixture("issue.json") | {"pull_request": None}
     assert not issue_from_rest("example/sandbox", raw).is_pull_request
+
+
+@pytest.mark.unit
+def test_job_annotations_preserve_path_provenance() -> None:
+    annotations = [
+        {"path": "tests/test_pool.py", "message": "runner offline"},
+        {"path": ".github", "message": "runner lost communication"},
+    ]
+    result = job_from_rest(_fixture("job.json"), annotations)
+    assert result.annotation_paths == ("tests/test_pool.py", ".github")
+    assert result.annotations == ("runner offline", "runner lost communication")

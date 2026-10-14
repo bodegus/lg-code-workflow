@@ -35,9 +35,11 @@ class FakeGitHub(GitHubPort):
         self.pr_titles: dict[tuple[str, int], str] = {}
         self.pr_documents: dict[tuple[str, int], PrDocument] = {}
         self.branch_heads: dict[tuple[str, str], str] = {}
+        self.pr_head_overrides: dict[tuple[str, int], str] = {}
         self.threads: dict[tuple[str, int], list[ReviewThread]] = {}
         self.reviews: dict[tuple[str, int], list[PrReview]] = {}
         self.resolutions: dict[str, ResolveReason] = {}
+        self.required_contexts: dict[tuple[str, str], tuple[str, ...]] = {}
         self.runs: dict[str, list[RunView]] = {}
         self.jobs: dict[int, list[JobView]] = {}
         self.logs: dict[int, str] = {}
@@ -48,6 +50,7 @@ class FakeGitHub(GitHubPort):
         self._failures: dict[str, tuple[int, BaseException]] = {}
         self._timelines: dict[str, list[tuple[float, list[RunView], list[JobView]]]] = {}
         self._timeline_starts: dict[str, datetime] = {}
+        self.after_call: Callable[[str], None] | None = None
         self.after_comment: Callable[[IssueComment], None] | None = None
         self._next_pr = 100
         self._next_comment = 1
@@ -71,6 +74,8 @@ class FakeGitHub(GitHubPort):
         self._call_counts[method] = self._call_counts.get(method, 0) + 1
 
     def _finish(self, method: str) -> None:
+        if self.after_call is not None:
+            self.after_call(method)
         failure = self._failures.get(method)
         if failure is not None and self._call_counts[method] == failure[0]:
             del self._failures[method]
@@ -90,16 +95,26 @@ class FakeGitHub(GitHubPort):
 
     def _current_pr(self, key: tuple[str, int]) -> PrSnapshot:
         pr = self.prs[key]
-        head = self.branch_heads.get((key[0], pr.head_ref), pr.head_sha)
+        head = self.pr_head_overrides.get(
+            key, self.branch_heads.get((key[0], pr.head_ref), pr.head_sha)
+        )
         current = pr.model_copy(update={"head_sha": head})
         self.prs[key] = current
         return current
+
+    def _timeline_repo(self, head_sha: str) -> str:
+        return next((repo for (repo, _), sha in self.branch_heads.items() if sha == head_sha), "")
 
     def _timeline(self, head_sha: str) -> tuple[list[RunView], list[JobView]]:
         elapsed = (self.clock.now() - self._timeline_starts[head_sha]).total_seconds()
         snapshot: tuple[list[RunView], list[JobView]] = ([], [])
         for offset, runs, jobs in self._timelines[head_sha]:
-            if offset <= elapsed:
+            if offset <= elapsed and all(
+                run.run_attempt <= 1
+                or self.rerun_requests.get((self._timeline_repo(head_sha), run.run_id), 0)
+                >= run.run_attempt - 1
+                for run in runs
+            ):
                 snapshot = (runs, jobs)
         return snapshot
 
@@ -167,6 +182,17 @@ class FakeGitHub(GitHubPort):
         self._record("get_pr", repo=repo, number=number)
         result = self._current_pr((repo, number))
         self._finish("get_pr")
+        return result
+
+    async def open_prs_for_head(self, repo: str, head_branch: str) -> tuple[PrSnapshot, ...]:
+        """Expose all matching open PRs, including competing bases."""
+        self._record("open_prs_for_head", repo=repo, head_branch=head_branch)
+        result = tuple(
+            self._current_pr(key)
+            for key, pr in self.prs.items()
+            if key[0] == repo and pr.head_ref == head_branch and pr.state == "OPEN"
+        )
+        self._finish("open_prs_for_head")
         return result
 
     async def branch_head(self, repo: str, branch: str) -> str | None:
@@ -344,7 +370,9 @@ class FakeGitHub(GitHubPort):
                     return
         raise KeyError(node_id)
 
-    async def runs_for_sha(self, repo: str, head_sha: str) -> list[RunView]:
+    async def runs_for_sha(
+        self, repo: str, head_sha: str, pr: PrSnapshot | None = None
+    ) -> list[RunView]:
         """Return the scripted run snapshot at current fake time."""
         self._record("runs_for_sha", repo=repo, head_sha=head_sha)
         if head_sha in self._timelines:
@@ -353,6 +381,17 @@ class FakeGitHub(GitHubPort):
             result = list(self.runs.get(head_sha, []))
         self._finish("runs_for_sha")
         return result
+
+    async def get_run(self, repo: str, run_id: int) -> RunView:
+        """Read the current owned-or-impostor execution identity."""
+        self._record("get_run", repo=repo, run_id=run_id)
+        for head in set(self.runs) | set(self._timelines):
+            runs = self._timeline(head)[0] if head in self._timelines else self.runs[head]
+            found = next((run for run in runs if run.run_id == run_id), None)
+            if found is not None:
+                self._finish("get_run")
+                return found
+        raise KeyError(run_id)
 
     async def jobs_for_run(self, repo: str, run_id: int) -> list[JobView]:
         """Return the current scripted jobs for a run."""
@@ -368,7 +407,9 @@ class FakeGitHub(GitHubPort):
     async def job_log(self, repo: str, job_id: int) -> str:
         """Read a seeded job log."""
         self._record("job_log", repo=repo, job_id=job_id)
-        result = self.logs[job_id]
+        result = self.logs.get(
+            job_id, "Job log unavailable from GitHub; use job steps and annotations."
+        )
         self._finish("job_log")
         return result
 
@@ -379,9 +420,18 @@ class FakeGitHub(GitHubPort):
         self.rerun_requests[key] = self.rerun_requests.get(key, 0) + 1
         self._finish("rerun_failed_jobs")
 
-    async def latest_base_jobs(self, repo: str, workflow: str, branch: str) -> list[JobView]:
+    async def latest_base_jobs(
+        self, repo: str, workflow: str, branch: str, workflow_path: str = ""
+    ) -> list[JobView]:
         """Read the seeded latest completed base run's jobs."""
         self._record("latest_base_jobs", repo=repo, workflow=workflow, branch=branch)
         result = list(self.base_jobs.get((repo, workflow, branch), []))
         self._finish("latest_base_jobs")
+        return result
+
+    async def required_check_contexts(self, repo: str, branch: str) -> tuple[str, ...]:
+        """Return trusted fixture ruleset/classic-protection check contexts."""
+        self._record("required_check_contexts", repo=repo, branch=branch)
+        result = self.required_contexts.get((repo, branch), ())
+        self._finish("required_check_contexts")
         return result

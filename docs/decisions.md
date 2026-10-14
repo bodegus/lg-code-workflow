@@ -910,7 +910,6 @@ our own code. Research references point into [research/](research/).
   in docs/validation/2026-10-14-t14-r2.md. No paid/live run is needed for these deterministic
   corrections. No merge, default push, force-push, assertion/timeout/lane weakening or gate waiver.
 
-
 ### D-035 R3 — recovery, revocation and CommonMark scope (review6158686710)
 
 - **Gate crash:** an approve continuation may reuse its builder result only before any gate
@@ -966,3 +965,197 @@ our own code. Research references point into [research/](research/).
   docs/validation/2026-10-14-t14-r4.md.
 - **Scope:** V-NEW-1..3 and V-P3a..d carry to the T16 PR's hardening backlog as requested. No
   optional T17 patch is included here; df82dc9 remains the parent of this small security fix.
+
+
+## D-036 — CI observation, required-policy union and rerun intent
+
+- **Decided:** T15, 2026-10-13. The CI node contains no LLM dispatch. Poll exact-head latest
+  workflow attempts with 15/30/60/120-second backoff and a heartbeat. Deadlines/grace use the
+  durable pushed comment timestamp, so restarting does not reset them. Closed/foreign heads stop.
+- **Required policy:** union configured workflow/job pairs with applicable branch-ruleset and
+  classic-protection context names. Bind names to observed jobs; before a name appears, include
+  every observed workflow conservatively so approval/startup blocks remain visible. An unknown
+  required name never becomes green. Pass the identical union to both classify and decide.
+  External check apps cannot be proven by Actions jobs; fail closed with owner attention when
+  protection pins another app. GET /apps/github-actions returned id 15368 / slug github-actions
+  on github.com. This adapter supports github.com, not a claim of GHES app identity.
+- **SDK ladder:** D-008's githubkit 0.16.1 already exposes typed async_get_branch_rules (pagination)
+  and async_get_status_checks_protection. Their generated v2026_03_10 schemas include context and
+  integration/app IDs. Use these public SDK operations, not a new HTTP client or custom API.
+  Classic protection 404 is the endpoint's absence response; other failures propagate, never
+  become an empty policy. Required-policy mapping is tested with the pinned generated models.
+- **Reruns:** record the CI decision then a rerun intent for exact head/run/from-attempt before
+  dispatch; record accepted afterward. After process loss, a strictly newer attempt recovers an
+  unknown request. Without a newer attempt, wait only the existing grace/deadline, then ask for
+  manual Actions inspection/start and explicit workflow retry. Never dispatch the unknown request
+  twice. Counts remain PR-derived, per class/head and per PR; CI markers include observed attempt
+  identity so distinct allowed reruns cannot collapse into one fact.
+- **Evidence:** authoritative runner annotations need no downloadable log (a failed acquisition
+  may have none). Other logs are redacted, retained and trimmed. Builder feedback includes the
+  selected failure first, at most 8 KB per job and 16 KB total. Retain feedback before the fix
+  decision, so a crash cannot resume with only a lossy generic message. Missing/expired GitHub
+  logs preserve available job/annotation evidence, not a fabricated test result.
+- **Infrastructure carry-forward (PR2 R2-X1):** runner/action/image-download patterns count only
+  in service annotations or an actual failed setup step. Application test prose cannot authorize
+  an infrastructure rerun. Network errors likewise require failed setup-step evidence.
+- **Repeated CI fixes:** the builder compares durable CI feedback fingerprints across published
+  heads. The second same failure gets one fresh builder per cause; its recurrence asks. A scoped
+  owner retry can grant one more CI fix, but does not waive rerun caps.
+- **Qualification:** named CI graph tests, four comment-response crash boundaries, unknown intent
+  with manual next-attempt recovery, ruleset-only approval/missing checks, app identity rejection,
+  infrastructure-prose regressions; actual output in the PR. Read-only live policy discovery
+  returned no required contexts for both authorized repos. T16 review/merge-ready remains an
+  explicit unit checkpoint; no complete real workflow is claimed here.
+
+
+### D-036 immutable CI diff evidence and live Actions read proof
+
+- **Current-head evidence:** CI startup classification must use committed base..pushed-head
+  paths, not the owner's dirty or untracked work. A regression adds an unpublished workflow file
+  beside an unchanged committed workflow and observes a real-shaped startup_failure: before the
+  fix, it dispatched an unnecessary builder turn; now it asks without a new turn or push and
+  preserves the unpublished file. WorkspacePort.commit_paths uses the existing D-025 git CLI
+  boundary with explicit immutable SHAs and no external diff/textconv. No new dependency.
+- **Pinned adapter qualification:** read the D-032 owner-authorized closed T5 fixture PR25.
+  githubkit returns all three actual CI jobs, including two annotations on the audit failure,
+  and a 39,932-character plain-text log through the redirected download endpoint. Trimming yields
+  8,192 bytes. Zero paid turns or GitHub writes. Transcript:
+  docs/spikes/2026-10-13-actions-read.md. This confirms the adapter; it does not qualify a full run
+  or permit failure/skipped required checks to be treated as green.
+
+
+### D-036 R1 corrections: execution provenance and complete bounded evidence
+
+- **Review:** PR #5 comment 6157412612. A recorded rerun decision with no matching intent
+  resumes that exact head/run/attempt operation; it does not spend the allowance a second time.
+  Once an intent exists, unknown dispatch still requires an observed newer attempt or owner
+  intervention. The fake exposes later attempts only after a real recorded rerun request.
+- **Execution ownership:** RunView retains event, head branch/repository, PR numbers and workflow
+  path. Before selecting latest attempts, require this repository, this PR branch and push or
+  pull_request; a PR event must name this PR. Re-read run identity/attempt and PR/remote head
+  immediately before dispatch. A move during polling or after intent asks without dispatch.
+- **Authoritative classification:** preserve annotation paths. Runner evidence is check-run
+  output or annotations without a file path or under .github/. Application-file annotations
+  cannot authorize infrastructure/resource reruns. Always try the failing job log; 404/409/410
+  preserves the available metadata. Resource patterns use those service fields, never application
+  log prose. Setup classification uses anchored known setup names, not arbitrary substrings such
+  as Test download cache. Flaky matches exact FAILED test identifiers, and every reported failing
+  identifier must be configured flaky. Existing positive resource fixtures now carry a service
+  annotation as well as the original log; their expected class/action assertions are retained.
+- **Required contexts:** a same-named passing job cannot hide an unresolved or approval-blocked
+  workflow. The first protected-flag-only 404 cross-check failed on real family-calendar:
+  protected=true, but protection.enabled=false and checks/contexts empty with enforcement off;
+  applicable rules are deletion/non_fast_forward/pull_request, without status checks.
+  Reviewer clarification 6157652390: after the complete ruleset read succeeds, explicit classic
+  disabled state (protection.enabled=false), or enforcement=off with empty checks/contexts,
+  proves no classic required checks. Missing protection, enforced checks or other enforcement
+  values ask. Unsupported workflows rules ask explicitly. All rows have SDK unit tests, including
+  the observed family-calendar shape. The repeated live policy read passes both authorized repos;
+  no owner remediation or policy write is needed.
+- **Evidence:** remove OSC/DCS/ANSI sequences and other controls except newline/tab before saving
+  evidence. Cap annotations at 2 KiB per job, each job at 8 KiB and aggregate at 16 KiB, preserving
+  log context/tail independently of annotation size. Measure the escaped FeedbackMarker before
+  publication. Startup failures retain workflow/path and check-suite output (or an explicit
+  unavailable-details statement), with a fingerprint stable across published heads.
+- **SDK ladder:** reuse githubkit 0.16.1 public stream=True and aiter_bytes, with its async context
+  keeping the transport open; finally closes the response. No new runtime dependency/client.
+  Stop complete-log downloads above 8 MiB, SHA/base-run observations above 100 and job observations
+  above 200; ask ci_evidence_limit instead of treating truncated observations as complete. The
+  HTTP unit tests use only the existing SDK with an in-memory synthetic transport and credentials.
+- **Proof:** named graph tests retained; exact dispatch counts replace the earlier <=1 crash
+  assertion, with boundary 2 explicitly requiring zero dispatch and ci_rerun_unknown. Added
+  provenance, every requested guard, control-byte, two-job annotation and SDK fallback/protection
+  tests. Qualification and killed guard mutants: docs/validation/2026-10-13-t15-r1.md.
+
+
+### D-036 run-association read qualification (no policy change)
+
+Pinned SDK read: own OPEN PR5/run38488590957 reports exact repo/branch/head and association[5];
+the D-032 CLOSED T5 fixture PR25 has an empty association list. No universal open-run guarantee
+is inferred. The CI node already stops closed PRs before selecting executions; no ownership
+policy change follows. Missing open associations continue to fail closed and the actual T17 run
+must qualify its own metadata. Zero model turns/GitHub writes; exact transcript in
+`docs/spikes/2026-10-14-run-associations.md`.
+
+
+### D-036 R2 corrections: bounded transient cost and structural provenance
+
+- **Authority:** reviewer PR5 comment6158430183 explicitly revises the CI policy. This section
+  supersedes the earlier annotation-path/output authority, user setup-name allowlist and
+  per-class rerun-on-recurrence owner asks. Infra/resources/flaky share at most one automatic
+  rerun per head; another genuine failure on a rerun head goes to the builder with downloaded
+  evidence even if its apparent class changes or becomes pre-existing. Existing blocked,
+  approval, policy, deadline and hard limits still ask. Successful flaky reruns retain the note.
+- **Evidence:** a path (including `.github`, `.github/x`, None) and check-run output are never
+  service provenance. Preserve numbered JobStep metadata plus whether the complete step list was
+  observed. Infra may use GitHub's own step number1 named exactly Set up job failing, startup
+  job conclusions, or runner-loss/cancellation before any user step starts. Missing step metadata
+  cannot prove this phase. Resource patterns likewise need this phase. User setup names and
+  network prose grant no rerun, including Install dependencies and a user Set up job at number2;
+  those failures go to the builder. This is stricter than scanning only the failing step's network
+  section, and prevents scanning another step's network output entirely. service_output remains
+  recorded evidence, with its former routing authority removed. Pytest flaky detection requires
+  all FAILED identifiers known, one summary whose failed count matches, and no error lines.
+- **Terminal evidence:** OSC/DCS/APC/PM/SOS removal consumes at most4096 characters on one line
+  and leaves a placeholder. Unterminated strings never consume subsequent failure lines. The
+  classifier, resumed builder and saved -full.log are each checked with all five variants.
+- **Ownership:** PR association is not a triggering-PR proof. Preserve association base.ref,
+  require a unique matching PR/base, and ask on multiple run associations or another open PR
+  sharing the branch. Check again before intent and after its write, before dispatch. The fake
+  can freeze PR head independently of branch head, proving both halves of the guards.
+- **Timeout dispatch:** compare fresh conclusion to the observed conclusion, including cancelled
+  timeout runs. Validate before recording intent and repeat after it for races. A changed run
+  before intent cannot strand an unknown intent. Crash-and-rerun behavior remains exactly once.
+- **SDK ladder:** D-008 remains applicable; githubkit0.16.1 public async_list_workflow_runs accepts
+  workflow_id as an int or string path. Query that workflow path directly with branch, event=push,
+  status=completed, per_page=1. No run means empty baseline, never a repository-wide 100-run search.
+  Filter raw run ownership before the owned-run cap and startup-suite hydration. Thin SDK read
+  helpers expose these existing adapter boundaries to synthetic HTTP unit tests; no new client,
+  runtime package, credential authority or model call. Existing job/suite/aggregate caps retained.
+- **Required-policy conservatism (R2-F8):** retain the current conservative unresolved-context
+  union: a same-named job cannot prove which workflow a protection context intends. An unrelated
+  startup-failed Nightly can therefore ask, even with a same-named passing job elsewhere. This
+  intentional fail-closed behavior is documented rather than narrowed without policy identity.
+  Unsupported workflows, required_deployments, code_scanning and merge_queue rules now ask.
+- **Feedback:** retain selected failure first, 2 KiB annotations, 8 KiB/job and16 KiB aggregate;
+  reserve a bounded also failing (omitted) identity line when evidence cannot fit. A compact third
+  job still retains its log if enough space remains; the existing third-tail assertion is kept.
+- **Live qualification:** real `.github` user-command annotations and empty check output are
+  pinned in tests/fixtures/ci/provenance-observation.json. No real runner-loss/literal printed
+  ::error specimen was available. R2-F12 is explicitly inconclusive for those two shapes, carried
+  to T17 qualification; path/output are no longer routing authorities. No failure manufactured,
+  models dispatched or GitHub writes: docs/spikes/2026-10-14-ci-provenance.md.
+- **Proof:** docs/validation/2026-10-14-t15-r2.md records reproductions, guard removals and final
+  make check. T16/T17 and the full real version-bump execution remain unqualified here.
+- **Live base-query correction:** the public SDK accepts a workflow identifier string, but the
+  actual endpoint returned404 for .github/workflows/ci.yml and200 for ci.yml. Normalize the
+  filename before the call; the strengthened synthetic route regression failed first. Actual
+  repaired latest_base_jobs read returned run38473073579/check/success, zero models/writes.
+  Transcript: docs/spikes/2026-10-14-base-workflow.md. A malformed step list missing numbers also
+  cannot claim complete observation; its negative regression failed before tightening the flag.
+
+
+## D-037 — Owner-directed prototype-first Phase 1 scope
+
+- **Authority:** reviewer-relayed owner decision PR4 comment6159291007 (2026-10-14), applied to
+  T15 by6159291252; follow-up6159336971 freezes df82dc9 and keeps optional R3-F6..F9 off PR4.
+- **Merge bar:** P0/P1 and security-relevant P2s in scope block (credentials, protected paths,
+  owner-command authority, wrong bytes, impostor CI). Other P2/P3 items are one-line entries in
+  the single T17 Hardening backlog. One verifier per fix round; report fixes exceeding about
+  300lines instead of expanding them. No invariant, assertion, timeout or lane is relaxed.
+- **T16 replacement:** none/light only, one fresh reviewer and one COMMENT review, P0/P1 blockers
+  resume the existing build/gate/publish/CI path, re-review, cap2 then ask (explicit retry +1).
+  Configured standard/deep executes light with a logged mapping. Ready mutation/labels/marker
+  remain once-only and no merge endpoint exists. Verifier/disputes/thread resolution/interdiff/
+  three-lens deep/review-specific human adoption wait for evidence after first runs.
+- **T17 replacement:** run/report/doctor, family-calendar only; memgo-app waits for Phase1bR3.
+  The live smoke is Phase1bR1 proxy-addr audit repair, once Alex creates the issue. Keep the
+  ci_wait kill/rerun proof and actual run report/usage/CI/side-effect receipts. The source/CI
+  evidence so far does not prove that real execution.
+- **Preserved optional work:** local branch codex/t17-hardening-r3-local holds four reproduced
+  optional T14 fixes; no push to df82dc9. It is brought into T17 as directed, rather than
+  restarting current verification. The new backlog supersedes earlier promises to finish all
+  non-security hardening before the first prototype run.
+- **Why:** the owner prioritizes the working issue-to-merge-ready path over successive edge-case
+  review rounds. This revises the implementation scope, not the overall requested end state:
+  a real CLI execution must still create a qualified merge-ready PR and survive the ci_wait restart.

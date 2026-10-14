@@ -285,6 +285,14 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         and entry.marker.feedback is not None
         and entry.marker.feedback.fingerprint is not None
     ]
+    if feedback is not None and feedback.source == "ci":
+        failures = [
+            entry.marker.feedback.fingerprint
+            for entry in state.ledger.entries
+            if isinstance(entry.marker, FeedbackMarker)
+            and entry.marker.feedback.source == "ci"
+            and entry.marker.feedback.fingerprint is not None
+        ]
     usage = completed[-1].usage if completed else None
     cause = should_restart_builder(usage, failures, {}, ctx.config.limits.context_restart_ratio)
     # A gate-limit retry grants one resumed fix, not a second unrelated restart ask.

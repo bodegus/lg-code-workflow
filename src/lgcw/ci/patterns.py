@@ -25,9 +25,3 @@ RESOURCE_PATTERNS = tuple(
 ERROR_START = re.compile(
     r"##\[error\]|Traceback|\bERROR\b|AssertionError|error:|\bFAILED\b|fatal:", re.I
 )
-SETUP_STEP = re.compile(r"setup|set up|install|checkout|download|prepare|restore|cache", re.I)
-NETWORK_ERROR = re.compile(
-    r"could not resolve host|connection (?:reset|refused)|network (?:error|unreachable)|"
-    r"rate limit|HTTP (?:429|502|503|504)",
-    re.I,
-)

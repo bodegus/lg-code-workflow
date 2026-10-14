@@ -15,16 +15,24 @@ from githubkit.exception import RequestFailed
 from pydantic import BaseModel
 
 from lgcw.clock import Clock, SystemClock
-from lgcw.github.port import GitHubPort, ResolveReason, TokenProvider
+from lgcw.github.port import (
+    CiEvidenceLimitError,
+    GitHubPort,
+    RequiredPolicyError,
+    ResolveReason,
+    TokenProvider,
+)
 from lgcw.live import require_live
 from lgcw.models.github import (
     IssueComment,
+    JobStep,
     JobView,
     PrDocument,
     PrReview,
     PrSnapshot,
     ReviewCommentDraft,
     ReviewThread,
+    RunPullRequest,
     RunView,
     ThreadComment,
 )
@@ -77,6 +85,28 @@ query($id:ID!,$cursor:String) {
 def _rest_data(model: BaseModel) -> dict[str, Any]:
     # githubkit's UNSET defaults serialize as strings unless explicitly excluded.
     return model.model_dump(mode="json", exclude_unset=True)
+
+
+def _required_context(raw: dict[str, Any], app_key: str) -> str:
+    # Verified with GET /apps/github-actions on github.com, 2026-10-13. This adapter
+    # currently targets github.com; external check apps cannot be qualified by Actions jobs.
+    if raw.get(app_key) not in {None, -1, 15368}:
+        raise RequiredPolicyError(
+            "unsupported required-check app; owner must qualify that external check"
+        )
+    return str(raw["context"])
+
+
+def required_contexts_from_rule(raw: dict[str, Any]) -> tuple[str, ...]:
+    """Extract required contexts from a validated SDK rule; missing policy fails closed."""
+    if raw.get("type") in {"workflows", "required_deployments", "code_scanning", "merge_queue"}:
+        raise RequiredPolicyError(
+            f"Required {raw['type']} rule is unsupported by the Actions policy adapter."
+        )
+    if raw.get("type") != "required_status_checks":
+        return ()
+    checks = raw["parameters"]["required_status_checks"]
+    return tuple(_required_context(check, "integration_id") for check in checks)
 
 
 def _review_from_rest(raw: dict[str, Any]) -> PrReview | None:
@@ -145,12 +175,25 @@ def job_from_rest(data: dict[str, Any], annotations: list[dict[str, Any]]) -> Jo
             for step in data.get("steps", [])
             if step.get("conclusion") in {"failure", "cancelled", "timed_out"}
         ),
+        steps=tuple(
+            JobStep(
+                number=step["number"],
+                name=step["name"],
+                status=step["status"],
+                conclusion=step.get("conclusion"),
+            )
+            for step in data.get("steps", [])
+            if "number" in step
+        ),
+        steps_observed="steps" in data and all("number" in step for step in data["steps"]),
         annotations=tuple(
             "\n".join(
                 str(item.get(key) or "") for key in ("title", "message", "raw_details")
             ).strip()
             for item in annotations
         ),
+        annotation_paths=tuple(item.get("path") for item in annotations),
+        service_output=data.get("service_output", ""),
         runner_name=data.get("runner_name"),
         url=data["html_url"],
     )
@@ -184,7 +227,239 @@ def _run_from_rest(data: dict[str, Any]) -> RunView:
         head_sha=data["head_sha"],
         run_attempt=data["run_attempt"],
         created_at=data.get("created_at"),
+        head_branch=data.get("head_branch"),
+        head_repository=(data.get("head_repository") or {}).get("full_name"),
+        pull_requests=tuple(pr["number"] for pr in data.get("pull_requests", ())),
+        pr_associations=tuple(
+            RunPullRequest(number=pr["number"], base_ref=pr["base"]["ref"])
+            for pr in data.get("pull_requests", ())
+            if (pr.get("base") or {}).get("ref")
+        ),
+        workflow_path=data.get("path", ""),
+        startup_error=data.get("startup_error", ""),
     )
+
+
+async def execution_from_rest(
+    sdk: GitHub[TokenAuthStrategy],
+    owner: str,
+    name: str,
+    data: dict[str, Any],
+) -> RunView:
+    """Retain a startup failure's check-suite output instead of sending empty feedback."""
+    run = _run_from_rest(data)
+    if run.conclusion != "startup_failure":
+        return run
+    suite_id = data.get("check_suite_id")
+    if suite_id is None:
+        return run.model_copy(
+            update={
+                "startup_error": (
+                    "GitHub reported startup_failure without check-suite error details."
+                )
+            }
+        )
+    response = await sdk.rest.checks.async_list_for_suite(
+        owner,
+        name,
+        suite_id,
+        filter_="latest",
+        per_page=100,
+    )
+    raw = response.json()
+    if raw["total_count"] > 100:
+        raise CiEvidenceLimitError("CI startup check count exceeds the 100 observation limit.")
+    messages = "\n".join(
+        str(check.get("output", {}).get(key) or "")
+        for check in raw["check_runs"]
+        for key in ("title", "summary", "text")
+    ).strip()
+    return run.model_copy(
+        update={
+            "startup_error": messages[:8192]
+            or "GitHub reported startup_failure without check-suite output."
+        }
+    )
+
+
+_LOG_BYTES = 8 * 1024 * 1024
+_MAX_RUNS = 100
+_MAX_JOBS = 200
+
+
+async def bounded_rows[T](rows: AsyncIterator[T], limit: int, label: str) -> list[T]:
+    """Stop paginated reads at a hard cap rather than silently dropping required evidence."""
+    result: list[T] = []
+    async for row in rows:
+        if len(result) >= limit:
+            raise CiEvidenceLimitError(f"CI {label} count exceeds the {limit} observation limit.")
+        result.append(row)
+    return result
+
+
+async def latest_base_run(
+    sdk: GitHub[TokenAuthStrategy], owner: str, name: str, workflow_path: str, branch: str
+) -> int | None:
+    """Ask Actions for one completed base push run of this workflow only."""
+    if not workflow_path:
+        raise RequiredPolicyError("CI workflow path is missing; cannot qualify its base run.")
+    response = await sdk.rest.actions.async_list_workflow_runs(
+        owner,
+        name,
+        workflow_path.rsplit("/", 1)[-1],
+        branch=branch,
+        event="push",
+        status="completed",
+        per_page=1,
+    )
+    items = response.json()["workflow_runs"]
+    return items[0]["id"] if items else None
+
+
+async def download_job_log(
+    sdk: GitHub[TokenAuthStrategy], owner: str, name: str, job_id: int
+) -> str:
+    """Stream at most 8 MiB using the pinned SDK and close the response on every path."""
+    async with sdk:
+        try:
+            response = await sdk.rest.actions.async_download_job_logs_for_workflow_run(
+                owner, name, job_id, stream=True
+            )
+        except RequestFailed as error:
+            if error.response.status_code not in {404, 409, 410}:
+                raise
+            return "Job log unavailable from GitHub; use job steps and annotations."
+        data = bytearray()
+        try:
+            async for chunk in response.aiter_bytes(chunk_size=16384):
+                if len(data) + len(chunk) > _LOG_BYTES:
+                    raise CiEvidenceLimitError("CI job log exceeds the 8 MiB download limit.")
+                data.extend(chunk)
+        finally:
+            await response.raw_response.aclose()
+        return data.decode("utf-8", errors="replace")
+
+
+async def required_policy(
+    sdk: GitHub[TokenAuthStrategy],
+    owner: str,
+    name: str,
+    branch: str,
+) -> tuple[str, ...]:
+    """Read both protection forms; an ambiguous protected-branch 404 fails closed."""
+    contexts: set[str] = set()
+    async for rule in sdk.rest.paginate(
+        sdk.rest.repos.async_get_branch_rules,
+        lambda response: response.parsed_data,
+        owner=owner,
+        repo=name,
+        branch=branch,
+        per_page=100,
+    ):
+        contexts.update(required_contexts_from_rule(_rest_data(rule)))
+    try:
+        response = await sdk.rest.repos.async_get_status_checks_protection(owner, name, branch)
+    except RequestFailed as error:
+        if error.response.status_code != 404:
+            raise
+        branch_response = await sdk.rest.repos.async_get_branch(owner, name, branch)
+        protection = branch_response.json().get("protection")
+        disabled = False
+        if isinstance(protection, dict):
+            checks = protection.get("required_status_checks")
+            enforcement = checks.get("enforcement_level") if checks is not None else None
+            nonempty = bool(checks and (checks.get("checks") or checks.get("contexts")))
+            disabled = (
+                enforcement in {None, "off"}
+                and not (protection.get("enabled") is True and nonempty)
+                and (protection.get("enabled") is False or (enforcement == "off" and not nonempty))
+            )
+        if not disabled:
+            raise RequiredPolicyError(
+                "Branch is protected or its protection is unknown, "
+                "but required checks returned 404. "
+                "Owner must supply read access or confirm the complete required policy."
+            ) from error
+    else:
+        raw = _rest_data(response.parsed_data)
+        contexts.update(raw.get("contexts", ()))
+        contexts.update(_required_context(check, "app_id") for check in raw.get("checks", ()))
+    return tuple(sorted(contexts))
+
+
+async def read_workflow_runs(
+    sdk: GitHub[TokenAuthStrategy], repo: str, head_sha: str, pr: PrSnapshot | None
+) -> list[RunView]:
+    """Filter ownership before hydration and the owned execution cap."""
+    owner, name = repo.split("/", 1)
+    runs: list[RunView] = []
+    items: AsyncIterator[dict[str, Any]] = sdk.rest.paginate(
+        sdk.rest.actions.async_list_workflow_runs_for_repo,
+        lambda response: response.json()["workflow_runs"],
+        owner=owner,
+        repo=name,
+        head_sha=head_sha,
+        per_page=100,
+    )
+    async for raw in items:
+        view = _run_from_rest(raw)
+        if pr is not None and (
+            view.head_sha != head_sha
+            or view.head_repository != repo
+            or view.head_branch != pr.head_ref
+            or view.event not in {"pull_request", "push"}
+            or (view.event == "pull_request" and pr.number not in view.pull_requests)
+        ):
+            continue
+        if len(runs) >= _MAX_RUNS:
+            raise CiEvidenceLimitError("CI owned run count exceeds the 100 observation limit.")
+        runs.append(await execution_from_rest(sdk, owner, name, raw))
+    return runs
+
+
+async def read_run_jobs(sdk: GitHub[TokenAuthStrategy], repo: str, run_id: int) -> list[JobView]:
+    """Read complete bounded job metadata and failure annotations through the SDK."""
+    owner, name = repo.split("/", 1)
+    response = await sdk.rest.actions.async_get_workflow_run(owner, name, run_id)
+    run: dict[str, Any] = dict(response.json())
+    jobs: list[JobView] = []
+    items: AsyncIterator[dict[str, Any]] = sdk.rest.paginate(
+        sdk.rest.actions.async_list_jobs_for_workflow_run,
+        lambda response: response.json()["jobs"],
+        owner=owner,
+        repo=name,
+        run_id=run_id,
+        filter_="latest",
+        per_page=100,
+    )
+    async for raw in items:
+        if len(jobs) >= _MAX_JOBS:
+            raise CiEvidenceLimitError("CI job count exceeds the 200 observation limit.")
+        raw["workflow_name"] = _run_from_rest(run).workflow
+        raw["run_attempt"] = raw.get("run_attempt") or run["run_attempt"]
+        annotations: list[dict[str, Any]] = []
+        if raw.get("conclusion") in {"failure", "cancelled", "timed_out"} and raw.get(
+            "check_run_url"
+        ):
+            check_id = int(urlsplit(raw["check_run_url"]).path.rstrip("/").rsplit("/", 1)[-1])
+            check_response = await sdk.rest.checks.async_get(owner, name, check_id)
+            check_output = check_response.json().get("output", {})
+            raw["service_output"] = "\n".join(
+                str(check_output.get(key) or "") for key in ("title", "summary", "text")
+            )
+            annotations = [
+                _rest_data(annotation)
+                async for annotation in sdk.rest.paginate(
+                    sdk.rest.checks.async_list_annotations,
+                    lambda response: response.parsed_data,
+                    owner=owner,
+                    repo=name,
+                    check_run_id=check_id,
+                    per_page=100,
+                )
+            ]
+        jobs.append(job_from_rest(raw, annotations))
+    return jobs
 
 
 class GitHubClient(GitHubPort):
@@ -302,6 +577,26 @@ class GitHubClient(GitHubPort):
             if pr.head.ref == head_branch:
                 return await self.get_pr(repo, pr.number)
         return None
+
+    async def open_prs_for_head(self, repo: str, head_branch: str) -> tuple[PrSnapshot, ...]:
+        """Read matching open identities; two suffice to prove ambiguity."""
+        owner, name = repo.split("/", 1)
+        sdk = self._sdk()
+        found: list[PrSnapshot] = []
+        items: AsyncIterator[SdkPullRequestSimple] = sdk.rest.paginate(
+            sdk.rest.pulls.async_list,
+            owner=owner,
+            repo=name,
+            state="open",
+            head=f"{owner}:{head_branch}",
+            per_page=100,
+        )
+        async for item in items:
+            if item.head.ref == head_branch:
+                found.append(await self.get_pr(repo, item.number))
+                if len(found) >= 2:
+                    break
+        return tuple(found)
 
     async def get_pr(self, repo: str, number: int) -> PrSnapshot:
         """Re-read current head/merge conditions and every page of PR labels."""
@@ -496,67 +791,26 @@ class GitHubClient(GitHubPort):
                 {"input": {"threadId": node_id, "resolutionReason": reason}},
             )
 
-    async def runs_for_sha(self, repo: str, head_sha: str) -> list[RunView]:
-        """Read exact-head runs using the SDK's Link-header paginator."""
+    async def runs_for_sha(
+        self, repo: str, head_sha: str, pr: PrSnapshot | None = None
+    ) -> list[RunView]:
+        """Read owned exact-head runs using the SDK Link-header paginator."""
+        return await read_workflow_runs(self._sdk(), repo, head_sha, pr)
+
+    async def get_run(self, repo: str, run_id: int) -> RunView:
+        """Read fresh execution identity through the pinned public SDK."""
         owner, name = repo.split("/", 1)
-        sdk = self._sdk()
-        return [
-            _run_from_rest(_rest_data(item))
-            async for item in sdk.rest.paginate(
-                sdk.rest.actions.async_list_workflow_runs_for_repo,
-                lambda response: response.parsed_data.workflow_runs,
-                owner=owner,
-                repo=name,
-                head_sha=head_sha,
-                per_page=100,
-            )
-        ]
+        response = await self._sdk().rest.actions.async_get_workflow_run(owner, name, run_id)
+        return await execution_from_rest(self._sdk(), owner, name, _rest_data(response.parsed_data))
 
     async def jobs_for_run(self, repo: str, run_id: int) -> list[JobView]:
-        """Read latest-attempt jobs and annotations for failed/cancelled checks."""
-        owner, name = repo.split("/", 1)
-        sdk = self._sdk()
-        response = await sdk.rest.actions.async_get_workflow_run(owner, name, run_id)
-        run = response.parsed_data
-        jobs: list[JobView] = []
-        async for item in sdk.rest.paginate(
-            sdk.rest.actions.async_list_jobs_for_workflow_run,
-            lambda response: response.parsed_data.jobs,
-            owner=owner,
-            repo=name,
-            run_id=run_id,
-            filter_="latest",
-            per_page=100,
-        ):
-            raw = _rest_data(item)
-            raw["workflow_name"] = _run_from_rest(_rest_data(run)).workflow
-            raw["run_attempt"] = raw.get("run_attempt") or run.run_attempt
-            annotations: list[dict[str, Any]] = []
-            if raw.get("conclusion") in {"failure", "cancelled", "timed_out"} and raw.get(
-                "check_run_url"
-            ):
-                check_id = int(urlsplit(raw["check_run_url"]).path.rstrip("/").rsplit("/", 1)[-1])
-                annotations = [
-                    _rest_data(annotation)
-                    async for annotation in sdk.rest.paginate(
-                        sdk.rest.checks.async_list_annotations,
-                        lambda response: response.parsed_data,
-                        owner=owner,
-                        repo=name,
-                        check_run_id=check_id,
-                        per_page=100,
-                    )
-                ]
-            jobs.append(job_from_rest(raw, annotations))
-        return jobs
+        """Read latest-attempt jobs including failure and cancellation evidence."""
+        return await read_run_jobs(self._sdk(), repo, run_id)
 
     async def job_log(self, repo: str, job_id: int) -> str:
-        """Read the downloaded log; callers redact before storing it."""
+        """Read a bounded complete log, preserving annotations if GitHub has no log."""
         owner, name = repo.split("/", 1)
-        response = await self._sdk().rest.actions.async_download_job_logs_for_workflow_run(
-            owner, name, job_id
-        )
-        return response.text
+        return await download_job_log(self._sdk(), owner, name, job_id)
 
     async def rerun_failed_jobs(self, repo: str, run_id: int) -> None:
         """Dispatch one request; the graph owns its durable action record and recovery."""
@@ -564,20 +818,15 @@ class GitHubClient(GitHubPort):
         async with self._mutation():
             await self._sdk().rest.actions.async_re_run_workflow_failed_jobs(owner, name, run_id)
 
-    async def latest_base_jobs(self, repo: str, workflow: str, branch: str) -> list[JobView]:
+    async def latest_base_jobs(
+        self, repo: str, workflow: str, branch: str, workflow_path: str = ""
+    ) -> list[JobView]:
         """Read jobs from the latest completed push run for this exact base/workflow."""
         owner, name = repo.split("/", 1)
-        sdk = self._sdk()
-        async for item in sdk.rest.paginate(
-            sdk.rest.actions.async_list_workflow_runs_for_repo,
-            lambda response: response.parsed_data.workflow_runs,
-            owner=owner,
-            repo=name,
-            branch=branch,
-            event="push",
-            status="completed",
-            per_page=100,
-        ):
-            if _run_from_rest(_rest_data(item)).workflow == workflow:
-                return await self.jobs_for_run(repo, item.id)
-        return []
+        run_id = await latest_base_run(self._sdk(), owner, name, workflow_path, branch)
+        return await self.jobs_for_run(repo, run_id) if run_id is not None else []
+
+    async def required_check_contexts(self, repo: str, branch: str) -> tuple[str, ...]:
+        """Union both policies and fail closed on ambiguous permissions or workflow rules."""
+        owner, name = repo.split("/", 1)
+        return await required_policy(self._sdk(), owner, name, branch)

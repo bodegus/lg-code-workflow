@@ -81,6 +81,22 @@ class ReviewCommentDraft(Strict):
     body: str
 
 
+class RunPullRequest(Strict):
+    """The base identity GitHub associates with an Actions execution."""
+
+    number: int
+    base_ref: str
+
+
+class JobStep(Strict):
+    """GitHub-numbered job step metadata, independent of step output."""
+
+    number: int
+    name: str
+    status: str
+    conclusion: str | None
+
+
 class RunView(Strict):
     """An Actions workflow run on an exact commit."""
 
@@ -92,6 +108,12 @@ class RunView(Strict):
     head_sha: str
     run_attempt: int
     created_at: datetime | None = None
+    head_branch: str | None = None
+    head_repository: str | None = None
+    pull_requests: tuple[int, ...] = ()
+    pr_associations: tuple[RunPullRequest, ...] = ()
+    workflow_path: str = ""
+    startup_error: str = ""
 
 
 class JobView(Strict):
@@ -105,6 +127,10 @@ class JobView(Strict):
     conclusion: str | None
     run_attempt: int
     failed_steps: tuple[str, ...]
+    steps: tuple[JobStep, ...] = ()
+    steps_observed: bool = False
     annotations: tuple[str, ...]
+    annotation_paths: tuple[str | None, ...] = ()
+    service_output: str = ""
     runner_name: str | None
     url: str
