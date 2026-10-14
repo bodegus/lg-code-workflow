@@ -225,18 +225,23 @@ Step details:
   on `done` counts as a gate failure ("no changes").
 - **gate.** Protected paths (config `protected_globs`, default `.github/workflows/**`) changed
   without explicit `lgcw-allow: <path>` lines in the frozen issue → `ask`. Each line names one
-  exact relative path outside HTML comments and Markdown code fences. Ordinary mentions,
+  exact relative path in a standalone paragraph outside HTML comments, script/pre blocks and
+  Markdown code fences. Line breaks are LF/CR/CRLF only; other Unicode separators are prose. Ordinary mentions,
   denial sentences and hidden text never pre-authorize paths. The question carries exact paths
   and a content fingerprint; only its authenticated `answer approve` acknowledges that proposal.
   Only the latest answered protected-path question counts; a later denial revokes an earlier
-  approval even if old bytes return. An approved proposal still matching its builder receipt
-  proceeds directly to gate without another paid turn. Content changes re-ask (D-035 R2).
+  approval even if old bytes return. A later allowed-author command also revokes an already
+  acknowledged approval; check after a long gate and immediately before push. Abort is terminal.
+  The acknowledgement route must match the question. An approved proposal matching its receipt
+  proceeds directly to gate without another paid turn only before any gate result exists. Content changes re-ask (D-035 R2).
   Gate commands run on the host in the clone with a
   timeout; failure → feedback to `build` with the trimmed output (max `gate_fix_rounds`, default
   2). The same failure fingerprint twice → fresh builder once (§6), then `ask`. Before every
   command, including a retry after an unknown result, content must match the builder receipt. Commands must leave identical content;
   zero exit with altered content records blocking feedback. An unknown command result asks.
-  Explicit owner retry authorizes a new command operation (D-035).
+  Existing gate results consume restored owner commands before routing; repeated graph states or
+  GraphRecursionError produce a recoverable node_error ask. Explicit owner retry authorizes a
+  new command operation (D-035 R3).
 - **publish.** `git add -A`, commit (message `lgcw: <first summary line> (#<n>)` plus trailers),
   push with `--force-with-lease=<branch>:<last pushed sha>`, render the PR body, write the `push`
   marker. Before push, an independent checkout of the immutable candidate must match the gate's

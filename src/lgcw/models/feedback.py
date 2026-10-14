@@ -10,7 +10,7 @@ from lgcw.models.base import Strict
 class Feedback(Strict):
     """Code-produced feedback for a subsequent builder turn."""
 
-    source: Literal["gate", "ci", "review", "owner", "no_changes"]
+    source: Literal["gate", "ci", "review", "owner", "no_changes", "rebuild"]
     summary: str
     data: str | None
     fingerprint: str | None

@@ -504,6 +504,12 @@ An unchanged approved proposal resumes at gate with zero additional paid turns.
 - [x] **Step 4: Run** `make check` → PASS.
 - [x] **Step 5: Commit** `feat(graph): build, gate and publish`.
 
+T14 R3 qualification:801 unit tests,2 live deselected,96.00% coverage;13/13 guard removals
+caught with isolated basetemp directories. Approval/gate crash recovery, no-progress owner ask,
+later command revocation before continuation/after gate/before push, CommonMark scope, and
+restored-parent rebuild prompt are proved in docs/validation/2026-10-14-t14-r3.md. D-035 R3
+records the accepted creator/editor residual and optional carry to T17.
+
 ### Task T15: Node — ci_wait
 
 **Files:**
@@ -535,6 +541,11 @@ An unchanged approved proposal resumes at gate with zero additional paid turns.
 - [ ] **Step 5: Commit** `feat(graph): review loop and merge-ready`.
 
 ### Task T17: CLI, doctor, target repo configs, live smoke
+
+T14 R3 optional carry, to qualify before the T17 full execution: R3-F6 unused session-loss grant
+accounting; R3-F7 approved claim mismatch feedback/charged gate fix; R3-F8 changed receipt bytes
+ask workspace_changed directly; R3-F9 embedded sk-ant/sk-admin redaction and long task-* names.
+Required R3-F1–F5 remain in T14.
 
 **Files:**
 - Create: `src/lgcw/cli.py`, `src/lgcw/doctor.py`, `config/repos/bodegus__family-calendar.toml`, `config/repos/bodegus__memgo-app.toml`

@@ -12,6 +12,7 @@ from lgcw.graph.handoff_size import fit_handoff
 from lgcw.graph.nodes.common import attention, finish_command, observe, post_once, sanitized
 from lgcw.graph.nodes.work import (
     check_work_claims,
+    claims_interruption,
     current_parent,
     latest_build,
     latest_gate,
@@ -94,7 +95,7 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         ),
         None,
     )
-    if recorded_feedback:
+    if recorded_feedback and (feedback is None or feedback.source != "rebuild"):
         feedback, findings = recorded_feedback.feedback, recorded_feedback.findings
     if feedback is not None and feedback.source == "owner":
         feedback = None
@@ -111,6 +112,7 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         previous is not None
         and previous.handoff is not None
         and previous.phase == "complete"
+        and latest_gate(state, previous.operation_id) is None
         and state.owner_command is not None
         and state.owner_command.verb == "answer"
         and state.owner_command.text.strip() == "approve"
@@ -136,6 +138,9 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         if question is not None and question.code == "protected_path":
             tree = await ctx.workspace.worktree_fingerprint(parent)
             claims = await check_work_claims(state, ctx, previous.handoff, parent)
+            interrupted = await claims_interruption(claims, state, ctx)
+            if interrupted is not None:
+                return interrupted
             if tree == previous.tree_fingerprint and claims.ok:
                 return {"handoff": previous.handoff, "ledger": state.ledger, "next_step": "gate"}
             await finish_command(ctx, state, number)
@@ -205,7 +210,7 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             if preserved is not None and preserved.source == "owner":
                 preserved = None
             feedback = (
-                preserved
+                (feedback if feedback is not None and feedback.source == "rebuild" else preserved)
                 or feedback
                 or Feedback(
                     source="owner",
@@ -223,6 +228,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 data=None,
                 fingerprint=ci.fingerprint,
             )
+    if feedback is not None and feedback.source == "rebuild":
+        handoff = None
     sessions = [
         entry.marker
         for entry in state.ledger.entries
@@ -502,6 +509,9 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             "feedback": claims.feedback,
             "owner_command": None,
         }
+        interrupted = await claims_interruption(claims, state, ctx)
+        if interrupted is not None:
+            return fields | interrupted
         if claims.ask is not None:
             return fields | {"ask": claims.ask, "next_step": "ask"}
         return fields | {"next_step": "gate" if claims.ok else "build"}
