@@ -630,6 +630,19 @@ first real run logs. Local optional work is preserved separately; it does not ch
 - V-P3b (PR4): scope approval revocation to relevant later commands and duplicate approvals.
 - V-P3c (PR4): avoid a charged fix after denial during a gate and subsequent reapproval.
 - V-P3d (PR4): re-ask after denial-ack crashes instead of dispatching a paid turn.
+- X-3 (PR6/R1): overall verdict and dropped-finding visibility fixed with R1-F2; routing still uses findings.
+- W-3 (PR6/R1): restore draft after a head race in mark_ready; requires an adapter operation, deferred.
+- W-2/X-5 (PR6/R1): bound the whole review body before posting, avoiding a paid retry after HTTP422.
+- X-4 (PR6/R1): turn the git64KiB diff capture limit into an ask; current262KiB bound is unreachable.
+- W-4 (PR6/R1): grant review_unknown retry only after a counted reviewer attempt.
+- W-5 (PR6/R1): detect unknown second review dispatch before the round-cap question.
+- W-6 (PR6/R1): recover pre_existing note with red CI without paying review/looping until abort.
+- W-7 (PR6/R1): poll transient UNKNOWN mergeability before asking; explicit retry currently recovers.
+- W-8/X-6 (PR6/R1): avoid ticking partial/not_met acceptance criteria in the merge-ready body.
+- X-7 (PR6/R1): owner decision later on attribution of review-level override labels.
+- X-8 (PR6/R1): repair the old-head green-CI body after a post-ready head move.
+- X-10 (PR6/R1): explicitly label the fenced review diff as untrusted in its template.
+- X-11 (PR6/R1): kill RV4/RV17/RC1b/RV9 mutants; seed active label for a non-vacuous switch check.
 - 6159291007/verifier: defer the fresh finding-verifier step until after first-run evidence.
 - 6159291007/disputes: defer disputed-finding handling until after first-run evidence.
 - 6159291007/threads: defer finding-thread resolution until after first-run evidence.

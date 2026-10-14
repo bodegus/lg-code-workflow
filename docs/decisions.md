@@ -54,6 +54,10 @@ our own code. Research references point into [research/](research/).
   workflow comments; commands are accepted only from comments without a marker. Reviews are posted
   as `COMMENT` (GitHub does not let authors approve or request changes on their own PRs). Codex can
   read the home directory, including the `gh` login (accepted for the local test).
+- **X-9 observation (PR6/6161401783):** reviewer probes with pinned Codex0.162.1 workspace/
+  read-only sandbox presets and the minimal environment could not use the current gh keychain
+  login (invalid default token); no GH_TOKEN is inherited. This is a current-host observation,
+  not a general home-directory isolation guarantee; T17 doctor requalification follows on PR7.
 - **Revisit when:** Phase 2 (GitHub App `lg-code-workflow[bot]`, repo-scoped tokens, `checks:read`).
 
 ## D-005 Reviewer fresh, builder resumed, with guardrails
@@ -1197,3 +1201,13 @@ must qualify its own metadata. Zero model turns/GitHub writes; exact transcript 
 - **Qualification:** docs/validation/2026-10-14-t16.md will retain commands and actual results.
   All test services are fakes and local git. T16 requires no new live model turn; the full live
   CLI qualification remains T17/R1. U-1..U-7 and V-NEW/P3 carry in the single T17 backlog.
+
+
+### D-038 R1 — Merge regression guard and unmatched critical locations
+
+R1-F1 strengthens the static guard with injected SDK/GraphQL/REST/argv/constructed-name cases;
+merge_state is an explicit read-only metadata allowance alongside the requested allowlist.
+R1-F2 removes git's separator TAB and keeps quoted paths fail closed before dispatch. Unmatched
+P0/P1 findings become recorded blockers requiring owner inspection, including lost-review-response
+recovery. Verdict/explanation and dropped reasons are visible (X-3); W-3 needs a new adapter call
+and carries with the other named non-blockers. No dependency, agent turn or live write added.
