@@ -1,7 +1,8 @@
-# Draft R2b issue: isolate dependency refresh publication
+# Approved R2b issue: isolate dependency refresh publication
 
-Draft only. Show this exact text to Alex before creating the family-calendar issue. Run it from
-main only after PR29 merges, per [reviewer decision6168424440](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6168424440).
+Alex approved the exact be1a3cb draft for creation and execution. It became
+[family-calendar issue30](https://github.com/bodegus/family-calendar/issues/30), after Alex merged
+PR29 as22446af. The run started from merged harness0a1f3c6. Authority follows [reviewer decision6168424440](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6168424440).
 The Dependabot correction carries issue9's existing owner requirement to keep minor/major/security
 updates. Credential creation remains Alex's decision and waits for the isolation fix to merge.
 

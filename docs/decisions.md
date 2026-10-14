@@ -1285,6 +1285,85 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
   local receipt identities and hosted CI links. R1-OBS1..3 carry in the existing backlog; no new
   dependencies or speculative hardening. R2/R3 and their synthesis remain separate future work.
 
+## D-041 — Owner response boundaries and P1 resumed workspace identity
+
+- **Authority:** [owner decisions issue9](https://github.com/bodegus/lg-code-workflow/issues/9)
+  requires a separate P1 harness fix before resuming R2. Real workflow execution uses merged
+  harness code; no builder merges or pushes main. R1-OBS1/OBS4, CI policy migration, cron product
+  changes and signature parsing are excluded from this fix.
+- **Owner commands:** answers, protected approval and abort are owner-owned. The R2 restriction
+  extended to all commands. Earlier four builder responses were unauthorized and remain in the
+  R2 evidence; the later direct instruction “proceed - can you complete #3 I approve” narrowly
+  delegates step3 after merged fixes and cron security corrections. Its
+  [operator record](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6167192778)
+  does not authorize earlier responses, merges, credentials or unmerged harness execution.
+  Reviewer6167208491 accepts this scope and additionally requires the corrected protected diff
+  and fingerprint on issue9 plus a reviewer verdict before delegated exact approval.
+- **Cause:** SDK0.162.1 Thread.cwd is AbsolutePathBuf; str(value) produces root='path', not the
+  filesystem path. Repeated cold resumes nested it into cwd. Use the typed `.root` value.
+  FakeThread already returns the real SDK ThreadReadResponse model; previous tests did not
+  assert the cwd passed to a resumed turn. New assertions cover that actual type and path.
+- **Trusted identity:** CLI supplies run_directory(config, ref)/repo to CodexHarness. Fresh
+  start may bind an otherwise unbound harness from its trusted SessionSpec; cold saved metadata
+  cannot bind it. Every paid dispatch requires an existing absolute cwd resolving exactly to the
+  bound worktree. Fresh read-only sessions bind their independent immutable checkout from the
+  trusted SessionSpec; they cannot change the builder binding. Unknown cold read-only roots
+  fail closed. Relative, missing, other existing or unbound builder workspaces fail closed as
+  HarnessSessionLostError, preserving the graph's existing bounded handoff recovery.
+- **Interface:** optional worktree constructor input leaves HarnessPort/SessionRef unchanged;
+  standalone callers must supply it for cold resume. The existing live smoke's resumed harness
+  receives its same root explicitly; every assertion remains unchanged. Canonical resolution
+  permits platform path aliases without admitting another worktree. Role/network/deny-all
+  settings, credential environment, SDK pin, assertions and timeouts remain unchanged.
+- **Test first:** five new typed-SDK/identity cases failed before implementation (0.51s);
+  the full harness boundary selection then passed25 (3.91s). Added live test checks the resumed
+  turn_context's cwd, exact explicit writable path and an actual write after server restart.
+  It is not run before merge under Alex's merged-code instruction; post-merge live proof is
+  required before R2 resumes. No new dependency: approved SDK path model plus pathlib suffice.
+
+Initial full local qualification passed1061 units,6 live deselected,95.32% (582.71s). Before
+publishing, inspection of the real review node showed its immutable checkout differs from the
+builder root. Two added reviewer/verifier checkout tests failed (0.49s); per-session trusted
+read-only roots then pass together with the boundary suite (27 cases). The initial commit hook
+was interrupted at101 passing tests to add this necessary regression; no commit/push occurred.
+Final make check passes1063 units,6 live deselected,95.32% coverage (564.24s). The live check
+remains pending on merged source; no R2 CLI was run on this branch.
+
+
+Post-merge P1 qualification: PR11 merged as `0a1f3c6db44f19717df2244f1096fcce652c8e3f`.
+From that exact merged source, `LGCW_LIVE=1 uv run pytest -m live
+ tests/live/test_codex_smoke.py::test_restart_workspace_identity -s` passed (1 test,23.65s).
+Both actual resumed cwd and the complete explicit writable-path set matched the temporary root;
+`resume-proof.txt` contained `resumed`. Receipt: PR11/comment6168333557. No family-calendar CLI
+or command was involved; the separate signed-command prerequisite still applies.
+
+## D-042 — Blank-separated role signatures are command metadata, not authority
+
+**Date:** 2026-10-14. **Status:** accepted for the R2 prerequisite in
+[issue9/comment6167208491](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6167208491).
+
+The contributor contract requires manual comments to end in `-builder` or `-reviewer`, while an
+exact protected-path approval compares the parsed answer against `approve`. Previously a signed
+answer retained that trailer in its payload and caused a redundant builder turn instead of
+accepting the unchanged content-bound proposal. R2 observed this before the owner stopped the
+unauthorized responses; correcting parsing does not authorize those historical actions.
+
+Keep the existing first-nonempty-line command grammar. Remove exactly one terminal `-builder`,
+`-reviewer` or `-owner` line only when a blank line separates it from the payload. Preserve all
+other content, including adjacent signatures, quotes, unknown trailers and contradictory prose.
+A role signature never grants permission: allowed GitHub authors and workflow-marker rejection
+still run before command acceptance. Delegation remains an owner decision, and protected approval
+still requires exact `approve` text bound to the question's paths and content fingerprint.
+
+Tests first fail22 cases against the merged parser (19 already pass), then the same41-case
+selection passes after the small normalization. Compiled-graph cases cover all three trailers
+and prove an unchanged approved proposal publishes with one builder dispatch, not a second dispatch.
+No dependency, port, schema, credential, sandbox, routing, assertion, fixture or timeout change.
+The P1 live qualification above used merged source; no real command or CLI runs on this branch.
+
+Signed-command full qualification: `make check` passes1092 units,6 live deselected,95.33%
+coverage (741.71s). No real harness or family-calendar CLI ran from this unmerged branch.
+
 ## D-043 — R2: owner-delegated CI/dependency maintenance and weekly GitHub Action
 
 - **Authority/scope:** Alex requested the next full issue-to-PR exercise, removing the two-Node
@@ -1294,10 +1373,12 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
   Runtime agents implement target changes; the operator does not edit target code or merge PRs.
 - **Policy migration:** replace CI/Node24.20.0 and CI/Node26.8.1 with stable CI/Quality; retain
   CI/Container build and smoke test. The issue requires the production audit unconditionally in
-  the remaining quality lane. Node bounds become>=26.8.0,<26.9.0; npm bounds remain>=12.0.2,<13.
+  the remaining quality lane. Node bounds become>=26.8.0,<26.9.0; npm bounds become>=12.0.2,<12.1.0 to match target engines~12.0.2.
   Quality/container are now qualified on exact target head2adfa1627a64696c91856f60f251463dc2768eae
-  (run38553158311). Reviewer6166501403 authorized the narrow live fixture migration. Final npm
-  upper-bound alignment to12.1.0 remains necessary to match target engines~12.0.2.
+  (run38553158311). Reviewer6166501403 authorized the narrow live fixture migration: only its
+  run ID/docstring change, keeping both assertions, lane and required-check logic. Historical
+  T17 specimen38441965084 belongs to the old Node24/26 policy; R1 run38546133890 remains
+  recorded in the R1 inspection.
 - **Version syntax:** npm uses `~x.y.z`, setup-node accepts26.8.x; the owner's `~>26.8` is intent,
   not valid npm syntax. Keep updated Actions commit SHAs because `uses:` cannot express tilde
   ranges. Docker must use a verified26.8 patch-line tag; other images remain outside this change.
@@ -1333,3 +1414,25 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
   run. No PAT may be created until the isolation fix merges; hosted refresh is not qualified.
   The [draft](requests/r2b-safe-dependency-refresh.md) also carries the original minor/major/security
   policy. Non-build owner feedback and post-publication revocation are deferred, not patched here.
+
+- **R2b authorization:** Alex explicitly approved creation and execution of the exact request at
+  be1a3cb. Created family-calendar issue30 from that immutable body, with only the required
+  contributor signature added. Its three allow paths authorize the named workflow, Dependabot
+  configuration and necessary AGENTS guidance. The real run started from clean merged
+  harness0a1f3c6 after target main contained22446af; unmerged PR12 code was not used. PR31 reached
+  merge-ready on ea13244369eb49c0fb65086bacd26862b80b5618 at13:19:40UTC after a continuation
+  from merged2ba0653. Exact-head Quality/container CI38569353866 and local gate passed;
+  independent reviewer6169271911 accepted the isolation proposal. Credentialed publication
+  and hosted missing-token behavior still require post-merge qualification. Issue approval does not grant credential provisioning or merge
+  authority, nor authorize later answers beyond the listed protected scope.
+
+- **Final policy live evidence:** read-only required-job identity test passed (1 test/1.75s) on
+  run38553158311 with its Quality/container jobs. Doctor from merged2ba0653, reading this PR's
+  configuration, accepted Node26.8.2 in>=26.8.0,<26.9.0 and npm12.0.2 in>=12.0.2,<12.1.0.
+  Both adapters used measured live evidence; no assertion, lane or required-check logic changed.
+
+- **Final source qualification:** full make check passes1092 units,6 live deselected,95.33%
+  coverage in801.67s. This qualifies the final R2 policy/fixture migration together with merged
+  P1 and signed-command prerequisites. The fixture change is only the reviewer-authorized run
+  ID/docstring; both assertions and the live lane remain unchanged. Documentation-only changes
+  used normal lint/render checks under Alex's exception; this mixed config/test PR uses full gates.

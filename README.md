@@ -115,7 +115,7 @@ sequenceDiagram
 ## Prerequisites
 
 Use Python 3.13 and uv, git, and gh logged in as the configured owner. For family-calendar, put
-stable Node >=26.8.0,<26.9.0 and npm >=12.0.2,<13 on PATH for the owner-requested R2 policy.
+stable Node >=26.8.0,<26.9.0 and npm >=12.0.2,<12.1.0 on PATH for the owner-requested R2 policy.
 `doctor` checks these configured bounds. R1 used the earlier Node24/26 matrix policy.
 The workflow uses its own Codex login at `~/.lgcw/codex`; never copy the desktop auth file and
 never run another Codex process on that home while the workflow is active.

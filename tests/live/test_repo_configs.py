@@ -13,11 +13,11 @@ from lgcw.github.token import GhCliTokenProvider
 
 @pytest.mark.live
 async def test_family_calendar_required_job_identities() -> None:
-    """Compare trusted policy with the most recent CI run observed before T17 implementation."""
+    """Compare R2 Quality/container policy with its exact-head green CI run."""
     config = load_config(Path(__file__).parents[2])
     repo = config.repo("bodegus/family-calendar")
     client = GitHubClient(GhCliTokenProvider())
-    run = await client.get_run(repo.full_name, 38441965084)
+    run = await client.get_run(repo.full_name, 38553158311)
     jobs = await client.jobs_for_run(repo.full_name, run.run_id)
     actual = {(job.workflow, job.name) for job in jobs}
     required = {(check.workflow, check.job) for check in repo.required_checks}

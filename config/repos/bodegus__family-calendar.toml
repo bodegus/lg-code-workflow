@@ -3,7 +3,7 @@ default_branch = "main"
 allowed_authors = ["bodegus"]
 setup = ["npm ci"]
 gate = ["npm run check"]
-# R2 owner-requested target: family-calendar#28. Qualify against its exact-head CI before merge.
+# R2 main policy: issue28 / PR29, qualified on exact-head CI run38553158311.
 required_checks = [
   { workflow = "CI", job = "Quality" },
   { workflow = "CI", job = "Container build and smoke test" },
@@ -22,7 +22,7 @@ npm = [12, 0, 2]
 
 [tool_maximums]
 node = [26, 9, 0]
-npm = [13, 0, 0]
+npm = [12, 1, 0]
 
 [[risk_classes]]
 name = "ci_supply_chain"

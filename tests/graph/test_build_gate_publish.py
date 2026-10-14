@@ -691,6 +691,22 @@ async def test_protected_approval_accepts_only_unchanged_proposal(graph_case: Gr
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("signature", ["-builder", "-reviewer", "-owner"])
+async def test_signed_protected_approval_does_not_dispatch_again(
+    graph_case: GraphCase, signature: str
+) -> None:
+    ctx, harness = await setup(
+        graph_case, [{"AGENTS.md": "approved proposal\n"}, {}], [output("AGENTS.md")] * 2
+    )
+    assert await execute(ctx) == "waiting"
+    await ctx.github.create_issue_comment(
+        ctx.issue_ref.repo, 100, f"/lgcw answer approve\n\n{signature}"
+    )
+    assert await execute(ctx) == "waiting"
+    assert len(graph_case.workspace.pushes) == 2 and len(harness.turns) == 1
+
+
+@pytest.mark.unit
 async def test_unknown_gate_retry_rejects_hand_edited_builder_content(
     graph_case: GraphCase,
 ) -> None:
