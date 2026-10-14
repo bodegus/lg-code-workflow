@@ -6,7 +6,8 @@
 [PR29](https://github.com/bodegus/family-calendar/pull/29) at
 `2adfa1627a64696c91856f60f251463dc2768eae`, with Quality and container CI green.
 The final retry/review ran from merged workflow source
-`0a1f3c6db44f19717df2244f1096fcce652c8e3f`; the PR remains unmerged.
+`0a1f3c6db44f19717df2244f1096fcce652c8e3f`. Alex subsequently merged PR29 at12:48:50UTC
+as `22446af60dc545a696b25c0583bfa767b8ebf159`. No agent merged it.
 This was not an unattended clean run: four unauthorized operator answers, two unmerged-source
 invocations, a corrupted SDK cwd and an extra signed-approval builder turn preceded completion.
 The fresh light reviewer missed the known cron credential-isolation defect. No publication token
@@ -54,7 +55,8 @@ in the builder checkout; no unmerged harness/parser code was imported.
 # After the explicitly authorized retry6168470941:
 PATH=<verified Node26.8.2 toolchain>:$PATH uv run lgcw --root /Users/alex/project/lg-code-workflow run bodegus/family-calendar#28
 merge_ready; report: /Users/alex/.lgcw/runs/bodegus__family-calendar__28/report.md
-# CLI exit0; target still OPEN, isDraft=false
+# At CLI completion12:37UTC: exit0; target OPEN, isDraft=false
+# Alex subsequently merged it at12:48:50UTC as22446af60dc545a696b25c0583bfa767b8ebf159
 # Gate's actual npm result:
 ℹ tests 159
 ℹ pass 159
@@ -189,8 +191,9 @@ These counts are exec orchestration calls, not counts of nested subprocesses.
 ## Follow-up and owner boundary
 
 [Reviewer decision6168424440](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6168424440)
-lets Alex merge or hold PR29 with the credential path inert. It does not delegate merging to the
-builder or token provisioning. The separate R2b issue text must be shown to Alex first and approved;
+let Alex merge or hold PR29 with the credential path inert. Alex merged it at12:48:50UTC as
+22446af60dc545a696b25c0583bfa767b8ebf159. Repository secret inventory was still empty after merge.
+This does not delegate token provisioning to the builder. The separate R2b issue text must be shown to Alex first and approved;
 its workflow run starts from main only after PR29 merges. No hosted refresh PR is claimed here.
 
 Phase2 candidates, ranked by this evidence: enforce distinct operator identity/delegation;

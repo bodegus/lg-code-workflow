@@ -1327,8 +1327,9 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
   The full inspection is [R2](runs/r2-node26-weekly-deps-28.md).
 - **Known defects and continuation:** the light reviewer missed both same-job fresh dependency
   execution/later PAT publication and the zero npm PR limit that suppresses minor/major proposals.
-  No token exists or was created. Reviewer6168424440 lets Alex merge or hold the inert PR29;
-  it requires an owner-approved R2b issue text and target main containing PR29 before the follow-up
+  No token exists or was created. Under reviewer6168424440, Alex merged the inert PR29 as
+  22446af60dc545a696b25c0583bfa767b8ebf159 at12:48:50UTC. The decision requires an
+  owner-approved R2b issue text and target main containing PR29 before the follow-up
   run. No PAT may be created until the isolation fix merges; hosted refresh is not qualified.
   The [draft](requests/r2b-safe-dependency-refresh.md) also carries the original minor/major/security
   policy. Non-build owner feedback and post-publication revocation are deferred, not patched here.
