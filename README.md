@@ -7,7 +7,40 @@ The PR is the durable run record; rerunning the same issue reconstructs progress
 **Phase 1 prototype:** the CLI and none/light review path are implemented and merged. R1 completed
 a real dependency bump through green CI, review and merge-ready, including a ci_wait kill/resume.
 One verified operator retry was needed before that interruption; see the [R1 evidence](docs/runs/r1-proxy-addr-26.md).
-Configured standard/deep reviews execute as one light review under D-037. R2/R3 and hardening remain planned.
+Configured standard/deep reviews execute as one light review under D-037. R2 is in progress;
+R3 and hardening remain planned.
+
+## Workflow
+
+```mermaid
+flowchart TD
+    Issue["GitHub issue with acceptance criteria"] --> Start["Owner starts the local CLI"]
+    Start --> Prepare["Validate issue, prepare workspace and draft PR"]
+    Prepare --> Build
+
+    subgraph Loop["Repeat until accepted or a limit is reached"]
+        Build["Build or fix — Codex builder"] --> Validate["Validate — local gate, publish, hosted CI"]
+        Validate -->|checks pass| Review["Review — fresh Codex reviewer"]
+        Review -->|changes requested| Build
+        Validate -->|fix needed| Build
+    end
+
+    Review -->|accepted| Ready["Merge-ready PR"]
+    Validate -->|approval needed or blocked| Ask["Owner question on GitHub"]
+    Review -->|limit reached| Ask
+    Build -->|blocked| Ask
+    Ask -->|answer or retry, then rerun CLI| Loop
+    Ask -->|abort| Stop["Stop; retain draft PR"]
+    classDef agent fill:#fff2cc,stroke:#996600,color:#222;
+    class Build,Review agent;
+```
+
+This is a cyclic state machine, shown at stage level. **Build → Validate → Review → Build** is the
+main improvement loop; acceptance exits to merge-ready. Validation includes claim/protected-file
+checks and local tests, then publication and hosted CI. Each review starts fresh; fix rounds resume
+the builder. Automatic retries are bounded, and the PR records progress so a CLI rerun resumes the
+recorded step. An owner response returns to the paused step, which may be validation rather than a
+new builder turn. A separate authorized reviewer handles merging.
 
 | Read | For |
 |---|---|
