@@ -402,16 +402,17 @@ an introduced failure (D-023).
 | superseded | cancelled by a newer run, or run head ≠ PR head | keep waiting |
 | awaiting_approval | run `action_required`, no jobs | ask |
 | startup_failure | run `startup_failure`, no jobs | builder if the diff touched workflows, else ask |
-| infra | runner lost/not acquired, action or image download failure, rate limit, network error in a setup step | rerun once per class per head; again → ask |
+| infra | GitHub step number 1 named Set up job fails; runner lost or cancellation before any user step starts; job startup conclusion | at most one combined infra/resources/flaky rerun per head; another failure → builder |
 | timeout | job `cancelled` with "exceeded the maximum execution time", or a step "has timed out" | rerun if the base job also times out, else builder |
-| resources | `ENOSPC`, out of memory, exit 137 in a failed job | rerun once, then builder |
-| flaky | failed then passed on the same head, or a known-flaky test id from config | rerun once; pass → proceed and note |
+| resources | resource signal during the GitHub setup phase or before user steps start | shares the one transient rerun; another failure → builder |
+| flaky | exact known-flaky pytest FAILED identifiers, matching summary failed count and no error lines | shares the one transient rerun; pass → proceed and note; another failure → builder |
 | pre_existing | same workflow, job and failing step fail on the base branch's latest completed push run | proceed and note (ask if the check is required and `pre_existing_policy = "ask"`) |
 | mass_failure | ≥ 5 failing jobs | infra rules, else builder |
 | change | build, lint or test step fails and the base is green | builder with the trimmed log |
 | unclassified | none of the above | builder, flagged |
 
-Caps: reruns ≤ 2 per head and ≤ 5 per PR; CI fix rounds ≤ 3 per PR; the same failure fingerprint
+Caps: infra/resources/flaky share at most one rerun per head, with another failure routed to
+the builder even if its class changes. Absolute rerun limits remain ≤ 2 per head and ≤ 5 per PR; CI fix rounds ≤ 3 per PR; the same failure fingerprint
 after a fix → fresh builder once, then ask. Trimmed log for the builder: job and step names, exit
 code, failure annotations, about 60 lines from the first error match, the last 200 lines of the
 failing step, ANSI codes and timestamps stripped, capped at 8 KB per job and 16 KB in total; the full
@@ -421,18 +422,26 @@ Rerun requests have an exact head/run/from-attempt intent and acceptance receipt
 receipt is recovered only by a newer observed attempt; otherwise the durable grace/deadline
 ends in an owner question, never another automatic dispatch. CI markers include attempt identity.
 Failure feedback is retained before the fix decision, selected failing job first, within the
-8 KB/job and 16 KB aggregate bounds. Every failing log is attempted, with metadata fallback for 404/409/410. Only check-run output
-or annotations without a file path or under .github/ qualify service evidence; application-file
-annotations/log prose cannot authorize infrastructure or resource reruns. Setup names match known
-anchored forms; flaky rules require exact failing IDs. Same-named jobs cannot hide a blocked
-workflow. Runs must belong to this repository, PR branch and push/pull_request event, with PR
-association for the latter. Re-read identity/attempt and PR/remote head before rerun dispatch.
-A decision with no intent resumes that recorded operation. Evidence removes terminal controls,
-limits annotations to 2 KiB/job and measures escaped markers. Downloads above 8 MiB or observations
-above 100 runs/200 jobs ask rather than evaluating partial evidence. Classic protection 404 requires an explicit disabled classic-protection state or enforcement off
-with empty checks/contexts, after a complete ruleset read; a protected flag alone is ambiguous
-because rulesets also set it. Missing protection/enforced classic checks and unsupported workflow
-rules ask. See D-036 R1.
+8 KB/job and 16 KB aggregate bounds; omitted failures retain a bounded identity summary.
+Every failing log is attempted, with metadata fallback for 404/409/410. Annotation paths and
+check-run output never establish service provenance. GitHub's exact numbered setup step and
+complete step metadata distinguish service-phase failures from arbitrary user-named steps.
+Network prose in a user step does not grant a rerun; the builder receives it as failure evidence.
+Same-named jobs cannot hide a blocked workflow; until policy names identify their workflow,
+unresolved/blocked workflows remain conservatively required, including an optional startup
+failure (D-036 R2). Runs must belong to this repository, PR branch and push/pull_request event;
+a PR event must have exactly this PR and matching base.ref. Multiple associated PRs or another
+open PR sharing the branch ask ci_ownership_ambiguous. Re-read identity/attempt/conclusion,
+PR/remote head and unique ownership before intent and again before dispatch. A recorded
+rerun decision without intent resumes only its exact observed attempt. Evidence removes terminal
+controls with line- and length-bounded sequences, limits annotations to 2 KiB/job and measures
+escaped markers. Downloads above 8 MiB, more than 100 owned runs after filtering or 200 jobs
+ask rather than evaluating partial evidence. Base comparison queries that workflow path's latest
+completed push run directly; an absent base run is empty baseline. Classic protection 404 requires
+an explicit disabled classic-protection state or enforcement off with empty checks/contexts,
+after a complete ruleset read; protected alone is ambiguous because rulesets also set it.
+Missing/enforced classic policy and unsupported workflows, required_deployments, code_scanning
+or merge_queue rules ask. See D-036 R1 and superseding R2 corrections.
 
 ## 9. Data model (Pydantic v2)
 

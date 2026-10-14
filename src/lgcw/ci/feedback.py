@@ -26,10 +26,11 @@ def failure_feedback(
     selected_id = decision.job.job_id if decision.job else None
     ordered = sorted(failing, key=lambda job: job.job_id != selected_id)
     pieces: list[str] = []
-    remaining = 16384
+    omission_reserve = 512 if len(ordered) > 2 else 0
+    remaining = 16384 - omission_reserve
     for job in ordered:
         cap = min(8191, remaining - (1 if pieces else 0))
-        if cap < 1024:
+        if cap < 512:
             break
         header = _clip(
             clean_evidence(
@@ -49,6 +50,9 @@ def failure_feedback(
         text = prefix + log
         pieces.append(text)
         remaining -= len(text.encode()) + (1 if len(pieces) > 1 else 0)
+    if len(pieces) < len(ordered):
+        omitted = ", ".join(f"{job.workflow}/{job.name}" for job in ordered[len(pieces) :])
+        pieces.append(_clip("also failing (omitted): " + omitted, omission_reserve - 1))
     if not pieces:
         pieces = [
             _clip(

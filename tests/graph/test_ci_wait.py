@@ -19,7 +19,7 @@ from lgcw.models.state import RunOutcome, RunState
 from tests.fakes.workspace import InjectedCrash
 from tests.graph.conftest import GraphCase
 from tests.graph.test_build_gate_publish import EditingHarness, execute, markers, output, setup
-from tests.unit.ci.cases import job, run
+from tests.unit.ci.cases import job, run, runner_job
 
 
 async def published(case: GraphCase) -> tuple[RunContext, EditingHarness, str]:
@@ -47,7 +47,7 @@ def script_failure(case: GraphCase, head: str, *, infrastructure: bool = False) 
     """Install one completed failed job with typed annotation/setup evidence."""
     case.github.runs[head] = [run(head=head, conclusion="failure")]
     case.github.jobs[1] = [
-        job(annotations=("The runner lost communication",) if infrastructure else ())
+        runner_job(annotations=("The runner lost communication",)) if infrastructure else job()
     ]
     case.github.logs[1] = "##[group]Run tests\nError: introduced failure\n##[endgroup]"
     case.github.base_jobs[(case.ctx.issue_ref.repo, "CI", "main")] = [
@@ -112,7 +112,7 @@ async def test_infra_rerun_once_then_success(graph_case: GraphCase) -> None:
             (
                 0,
                 [run(head=head, conclusion="failure")],
-                [job(annotations=("The runner lost communication",))],
+                [runner_job(annotations=("The runner lost communication",))],
             ),
             (15, [run(head=head, attempt=2)], [job(conclusion="success", attempt=2)]),
         ],
@@ -163,7 +163,7 @@ async def test_decision_reused_after_crash(graph_case: GraphCase) -> None:
             (
                 0,
                 [run(head=head, conclusion="failure")],
-                [job(annotations=("The runner lost communication",))],
+                [runner_job(annotations=("The runner lost communication",))],
             ),
             (15, [run(head=head, attempt=2)], [job(conclusion="success", attempt=2)]),
         ],
@@ -222,7 +222,7 @@ async def test_ci_comment_crash_boundaries_never_repeat_dispatch(
             (
                 0,
                 [run(head=head, conclusion="failure")],
-                [job(annotations=("The runner lost communication",))],
+                [runner_job(annotations=("The runner lost communication",))],
             ),
             (15, [run(head=head, attempt=2)], [job(conclusion="success", attempt=2)]),
         ],

@@ -35,6 +35,7 @@ class FakeGitHub(GitHubPort):
         self.pr_titles: dict[tuple[str, int], str] = {}
         self.pr_documents: dict[tuple[str, int], PrDocument] = {}
         self.branch_heads: dict[tuple[str, str], str] = {}
+        self.pr_head_overrides: dict[tuple[str, int], str] = {}
         self.threads: dict[tuple[str, int], list[ReviewThread]] = {}
         self.reviews: dict[tuple[str, int], list[PrReview]] = {}
         self.resolutions: dict[str, ResolveReason] = {}
@@ -94,7 +95,9 @@ class FakeGitHub(GitHubPort):
 
     def _current_pr(self, key: tuple[str, int]) -> PrSnapshot:
         pr = self.prs[key]
-        head = self.branch_heads.get((key[0], pr.head_ref), pr.head_sha)
+        head = self.pr_head_overrides.get(
+            key, self.branch_heads.get((key[0], pr.head_ref), pr.head_sha)
+        )
         current = pr.model_copy(update={"head_sha": head})
         self.prs[key] = current
         return current
@@ -179,6 +182,17 @@ class FakeGitHub(GitHubPort):
         self._record("get_pr", repo=repo, number=number)
         result = self._current_pr((repo, number))
         self._finish("get_pr")
+        return result
+
+    async def open_prs_for_head(self, repo: str, head_branch: str) -> tuple[PrSnapshot, ...]:
+        """Expose all matching open PRs, including competing bases."""
+        self._record("open_prs_for_head", repo=repo, head_branch=head_branch)
+        result = tuple(
+            self._current_pr(key)
+            for key, pr in self.prs.items()
+            if key[0] == repo and pr.head_ref == head_branch and pr.state == "OPEN"
+        )
+        self._finish("open_prs_for_head")
         return result
 
     async def branch_head(self, repo: str, branch: str) -> str | None:
@@ -356,7 +370,9 @@ class FakeGitHub(GitHubPort):
                     return
         raise KeyError(node_id)
 
-    async def runs_for_sha(self, repo: str, head_sha: str) -> list[RunView]:
+    async def runs_for_sha(
+        self, repo: str, head_sha: str, pr: PrSnapshot | None = None
+    ) -> list[RunView]:
         """Return the scripted run snapshot at current fake time."""
         self._record("runs_for_sha", repo=repo, head_sha=head_sha)
         if head_sha in self._timelines:
@@ -404,7 +420,9 @@ class FakeGitHub(GitHubPort):
         self.rerun_requests[key] = self.rerun_requests.get(key, 0) + 1
         self._finish("rerun_failed_jobs")
 
-    async def latest_base_jobs(self, repo: str, workflow: str, branch: str) -> list[JobView]:
+    async def latest_base_jobs(
+        self, repo: str, workflow: str, branch: str, workflow_path: str = ""
+    ) -> list[JobView]:
         """Read the seeded latest completed base run's jobs."""
         self._record("latest_base_jobs", repo=repo, workflow=workflow, branch=branch)
         result = list(self.base_jobs.get((repo, workflow, branch), []))

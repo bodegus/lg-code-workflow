@@ -60,9 +60,20 @@ async def _ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, A
             return attention(
                 "head_moved", "PR/remote head changed while waiting for CI.", "reconcile"
             )
-        runs = latest_runs(
-            owned_runs(await ctx.github.runs_for_sha(repo, push.head_sha), repo, pr), push.head_sha
-        )
+        candidates = await ctx.github.runs_for_sha(repo, push.head_sha, pr)
+        head_prs = await ctx.github.open_prs_for_head(repo, pr.head_ref)
+        if (
+            len(head_prs) != 1
+            or head_prs[0].number != number
+            or head_prs[0].base_ref != pr.base_ref
+            or any(len(run.pull_requests) > 1 for run in candidates)
+        ):
+            return attention(
+                "ci_ownership_ambiguous",
+                "Multiple or unproven PR owners for this CI head.",
+                "ci_wait",
+            )
+        runs = latest_runs(owned_runs(candidates, repo, pr), push.head_sha)
         batches = await asyncio.gather(*(ctx.github.jobs_for_run(repo, run.run_id) for run in runs))
         jobs = tuple(job for batch in batches for job in batch)
         if len(jobs) > 200:
@@ -122,7 +133,12 @@ async def _ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, A
             ctx.log.artifact(path + "-trimmed.log", tail)
         base_batches = await asyncio.gather(
             *(
-                ctx.github.latest_base_jobs(repo, workflow, pr.base_ref)
+                ctx.github.latest_base_jobs(
+                    repo,
+                    workflow,
+                    pr.base_ref,
+                    next(run.workflow_path for run in runs if run.workflow == workflow),
+                )
                 for workflow in sorted({job.workflow for job in failing})
             )
         )
@@ -255,30 +271,50 @@ async def _ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, A
                 from_attempt=selected.run_attempt,
                 phase="intent",
             )
-            await post_once(
-                ctx, number, intent, "CI rerun intent; unknown completion will not dispatch again."
-            )
-            # Re-read both run identity/attempt and the exact owned head before the write.
-            fresh_run = await ctx.github.get_run(repo, selected.run_id)
-            current = await ctx.github.get_pr(repo, number)
-            if current.state != "OPEN":
-                return {"pr": current, "outcome": "closed", "next_step": "end"}
-            if (
-                current.head_sha != push.head_sha
-                or await ctx.github.branch_head(repo, pr.head_ref) != push.head_sha
-            ):
-                return attention("head_moved", "PR changed before CI rerun dispatch.", "reconcile")
-            if (
-                not owned_runs((fresh_run,), repo, current)
-                or fresh_run.head_sha != push.head_sha
-                or fresh_run.run_attempt != selected.run_attempt
-                or fresh_run.workflow != selected.workflow
-                or fresh_run.status != "completed"
-                or fresh_run.conclusion not in {"failure", "timed_out"}
-            ):
-                return attention(
-                    "ci_run_changed", "Run ownership or attempt changed before rerun.", "ci_wait"
-                )
+            # Validate before intent so an already changed run cannot strand an intent.
+            # Validate again after its write to retain the head/closure/ownership race guard.
+            for before_intent in (True, False):
+                fresh_run = await ctx.github.get_run(repo, selected.run_id)
+                current = await ctx.github.get_pr(repo, number)
+                if current.state != "OPEN":
+                    return {"pr": current, "outcome": "closed", "next_step": "end"}
+                if (
+                    current.head_sha != push.head_sha
+                    or await ctx.github.branch_head(repo, pr.head_ref) != push.head_sha
+                ):
+                    return attention(
+                        "head_moved", "PR changed before CI rerun dispatch.", "reconcile"
+                    )
+                head_prs = await ctx.github.open_prs_for_head(repo, current.head_ref)
+                if (
+                    len(head_prs) != 1
+                    or head_prs[0].number != number
+                    or head_prs[0].base_ref != current.base_ref
+                    or len(fresh_run.pull_requests) > 1
+                ):
+                    return attention(
+                        "ci_ownership_ambiguous", "PR ownership changed before rerun.", "ci_wait"
+                    )
+                if (
+                    not owned_runs((fresh_run,), repo, current)
+                    or fresh_run.head_sha != push.head_sha
+                    or fresh_run.run_attempt != selected.run_attempt
+                    or fresh_run.workflow != selected.workflow
+                    or fresh_run.status != "completed"
+                    or fresh_run.conclusion != selected.conclusion
+                ):
+                    return attention(
+                        "ci_run_changed",
+                        "Run ownership or attempt changed before rerun.",
+                        "ci_wait",
+                    )
+                if before_intent:
+                    await post_once(
+                        ctx,
+                        number,
+                        intent,
+                        "CI rerun intent; unknown completion will not dispatch again.",
+                    )
             await ctx.github.rerun_failed_jobs(repo, selected.run_id)
             await post_once(
                 ctx,

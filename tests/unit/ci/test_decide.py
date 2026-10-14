@@ -9,7 +9,7 @@ from lgcw.models.base import Strict
 from lgcw.models.ci import CiAction, CiClass, CiHistory, CiStatus
 from lgcw.models.config import Limits, RepoConfig
 from lgcw.models.github import JobView, RunView
-from tests.unit.ci.cases import SHA, history, job, repo, run
+from tests.unit.ci.cases import SHA, history, job, repo, run, runner_job
 
 
 class Case(Strict):
@@ -62,8 +62,8 @@ CASES = (
     ),
     Case(
         name="infra_setup_network",
-        failing=(job(steps=("Install dependencies",)),),
-        logs={1: "Could not resolve host registry.example.test"},
+        failing=(runner_job(),),
+        logs={1: "##[group]Set up job\nCould not resolve host registry.example.test"},
         expected_class="infra",
         expected_action="rerun",
     ),
@@ -90,7 +90,7 @@ CASES = (
     ),
     Case(
         name="resources",
-        failing=(job(annotations=("ENOSPC: no space left on device",)),),
+        failing=(runner_job(annotations=("ENOSPC: no space left on device",)),),
         logs={1: "ENOSPC: no space left on device"},
         expected_class="resources",
         expected_action="rerun",
@@ -98,7 +98,7 @@ CASES = (
     Case(
         name="known_flaky",
         config=repo(flaky=("test_intermittent",)),
-        logs={1: "FAILED test_intermittent"},
+        logs={1: "FAILED test_intermittent\n=== 1 failed in 0.1s ==="},
         expected_class="flaky",
         expected_action="rerun",
     ),
@@ -192,7 +192,7 @@ def test_decide(case: Case) -> None:
 def test_rerun_caps(past: CiHistory) -> None:
     result = decide(
         "failure",
-        [job(steps=("Setup",))],
+        [runner_job()],
         [run()],
         None,
         past,
@@ -202,14 +202,14 @@ def test_rerun_caps(past: CiHistory) -> None:
         Limits(),
         pushed_sha=SHA,
     )
-    assert result.action == "ask"
+    assert result.action == ("fix" if past.reruns_by_head.get(SHA, 0) else "ask")
 
 
 @pytest.mark.unit
 def test_resource_repeat_goes_to_builder() -> None:
     result = decide(
         "failure",
-        [job(annotations=("out of memory",))],
+        [runner_job(annotations=("out of memory",))],
         [run()],
         None,
         history(reruns=1, total=1, classes={"resources": 1}),

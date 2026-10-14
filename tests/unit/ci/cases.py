@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from lgcw.models.ci import CiClass, CiHistory
 from lgcw.models.config import RepoConfig, RequiredCheck
-from lgcw.models.github import JobView, PrSnapshot, RunView
+from lgcw.models.github import JobStep, JobView, PrSnapshot, RunPullRequest, RunView
 
 NOW = datetime(2026, 10, 13, tzinfo=UTC)
 SHA = "a" * 40
@@ -51,6 +51,7 @@ def run(
         head_branch="lgcw/issue-1",
         head_repository="example/sandbox",
         pull_requests=(100,),
+        pr_associations=(RunPullRequest(number=100, base_ref="main"),),
         workflow_path=".github/workflows/ci.yml",
     )
 
@@ -77,6 +78,14 @@ def job(
         conclusion=conclusion,
         run_attempt=attempt,
         failed_steps=steps,
+        steps_observed=True,
+        steps=(
+            JobStep(number=1, name="Set up job", status="completed", conclusion="success"),
+            *(
+                JobStep(number=i + 2, name=step, status=status, conclusion=conclusion)
+                for i, step in enumerate(steps)
+            ),
+        ),
         annotations=annotations,
         runner_name="synthetic",
         url="https://example.test/job/1",
@@ -121,3 +130,16 @@ def history(
 def required() -> tuple[RequiredCheck, ...]:
     """Return the exact workflow/job identity."""
     return (RequiredCheck(workflow="CI", job="test"),)
+
+
+def runner_job(*, annotations: tuple[str, ...] = ()) -> JobView:
+    """Return a real-shaped failure in GitHub's own numbered setup phase."""
+    return job(steps=("Set up job",), annotations=annotations).model_copy(
+        update={
+            "steps": (
+                JobStep(number=1, name="Set up job", status="completed", conclusion="failure"),
+                JobStep(number=2, name="Run tests", status="queued", conclusion=None),
+            ),
+            "annotation_paths": tuple(".github" for _ in annotations),
+        }
+    )

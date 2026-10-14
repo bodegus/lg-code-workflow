@@ -5,14 +5,12 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 
-from lgcw.ci.classify import latest_runs
+from lgcw.ci.classify import latest_runs, no_user_steps_started
 from lgcw.ci.logs import failure_fingerprint
 from lgcw.ci.patterns import (
     ERROR_START,
     INFRA_PATTERNS,
-    NETWORK_ERROR,
     RESOURCE_PATTERNS,
-    SETUP_STEP,
     TIMEOUT_ANNOTATION,
 )
 from lgcw.models.ci import CiAction, CiClass, CiDecision, CiHistory, CiStatus
@@ -23,7 +21,10 @@ from lgcw.models.github import JobView, RunView
 def _genuine_failure(job: JobView) -> bool:
     return job.conclusion in {"failure", "timed_out", "startup_failure"} or (
         job.conclusion == "cancelled"
-        and bool(TIMEOUT_ANNOTATION.search("\n".join(job.annotations)))
+        and (
+            bool(TIMEOUT_ANNOTATION.search("\n".join(job.annotations)))
+            or no_user_steps_started(job)
+        )
     )
 
 
@@ -52,21 +53,6 @@ def _job_rule(
 ) -> tuple[CiClass, CiAction]:
     evidence = "\n".join((*job.annotations, log))
     baseline = [other for other in base if (other.workflow, other.name) == (job.workflow, job.name)]
-    service_annotations = tuple(
-        text
-        for index, text in enumerate(job.annotations)
-        if index >= len(job.annotation_paths)
-        or not job.annotation_paths[index]
-        or str(job.annotation_paths[index]).startswith(".github/")
-    )
-    infra_evidence = "\n".join((*service_annotations, job.service_output))
-    setup_failed = any(SETUP_STEP.search(step) for step in job.failed_steps)
-    if (
-        any(pattern.search(infra_evidence) for pattern in INFRA_PATTERNS)
-        or (setup_failed and any(pattern.search(log) for pattern in INFRA_PATTERNS))
-        or (setup_failed and NETWORK_ERROR.search(evidence))
-    ):
-        return "infra", "rerun"
     if job.conclusion == "timed_out" or TIMEOUT_ANNOTATION.search(evidence):
         base_timeout = any(
             other.conclusion == "timed_out"
@@ -74,10 +60,38 @@ def _job_rule(
             for other in baseline
         )
         return "timeout", "rerun" if base_timeout else "fix"
-    if any(pattern.search(infra_evidence) for pattern in RESOURCE_PATTERNS):
+    # Paths, check output and user-chosen step names are not service provenance. Only
+    # GitHub's numbered setup step, or a cancellation/lost runner before user work,
+    # can corroborate infrastructure/resource prose. Unknown step metadata is untrusted.
+    setup_failed = any(
+        step.number == 1 and step.name == "Set up job" and step.conclusion == "failure"
+        for step in job.steps
+    )
+    no_user_started = no_user_steps_started(job)
+    service_phase = setup_failed or no_user_started
+    if service_phase and any(pattern.search(evidence) for pattern in RESOURCE_PATTERNS):
         return "resources", "rerun"
+    if (
+        setup_failed
+        or job.conclusion == "startup_failure"
+        or (
+            no_user_started
+            and (
+                job.conclusion == "cancelled"
+                or any(pattern.search(evidence) for pattern in INFRA_PATTERNS)
+            )
+        )
+    ):
+        return "infra", "rerun"
     failed_ids = set(re.findall(r"(?m)^\s*FAILED\s+(\S+)(?:\s|$)", log))
-    if failed_ids and failed_ids <= set(repo.known_flaky):
+    summary = re.findall(r"(?m)^=+\s*(\d+) failed(?:, [^\n=]+)?(?: in [^\n=]+)?\s*=+\s*$", log)
+    if (
+        failed_ids
+        and failed_ids <= set(repo.known_flaky)
+        and len(summary) == 1
+        and int(summary[0]) == len(failed_ids)
+        and not re.search(r"(?mi)^\s*(?:ERROR\b|FAIL\b|error\b|.*\berrors?\b)", log)
+    ):
         return "flaky", "rerun"
     if job.failed_steps and any(
         other.conclusion == "failure" and set(job.failed_steps) <= set(other.failed_steps)
@@ -177,9 +191,11 @@ def decide(
         ):
             continue
         klass, action = _job_rule(job, baseline, log_tails.get(job.job_id, ""), repo, len(failures))
-        used = classes.get(klass, 0)
-        if action == "rerun" and klass in {"infra", "resources", "flaky"} and used >= 1:
-            action = "fix" if klass == "resources" else "ask"
+        # A failed rerun must reach the builder, even if its apparent class changes or
+        # would otherwise look pre-existing. One transient retry is a cost bound, not
+        # an owner-question loop that hides the actual regression.
+        if history.reruns_by_head.get(pushed_sha, 0) >= 1 and _genuine_failure(job):
+            action = "fix"
         if action == "rerun" and (
             history.reruns_by_head.get(pushed_sha, 0) >= limits.reruns_per_head
             or history.reruns_total >= limits.reruns_per_pr

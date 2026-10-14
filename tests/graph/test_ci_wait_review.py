@@ -9,7 +9,7 @@ from tests.fakes.workspace import InjectedCrash
 from tests.graph.conftest import GraphCase
 from tests.graph.test_build_gate_publish import markers
 from tests.graph.test_ci_wait import execute_ci, published
-from tests.unit.ci.cases import job, run
+from tests.unit.ci.cases import job, run, runner_job
 
 
 @pytest.mark.unit
@@ -22,7 +22,7 @@ async def test_rerun_decision_without_intent_resumes_exact_dispatch(graph_case: 
             (
                 0,
                 [run(head=head, conclusion="failure")],
-                [job(annotations=("The runner lost communication",))],
+                [runner_job(annotations=("The runner lost communication",))],
             ),
             (15, [run(head=head, attempt=2)], [job(conclusion="success", attempt=2)]),
         ],
@@ -156,11 +156,15 @@ async def test_rerun_cap_per_head_with_different_class(graph_case: GraphCase) ->
             )
         ),
     )
+    from tests.graph.test_build_gate_publish import output
+
+    harness.edits.append({"app.py": "VERSION = '0.1.2'\n"})
+    harness.script("builder", [output("app.py")])
     script_failure(graph_case, head, infrastructure=True)
     assert await execute_ci(ctx) == "waiting"
     assert not graph_case.github.rerun_requests
-    assert markers(graph_case, "ask")[-1].code == "ci_failure"
-    assert len(harness.turns) == 1
+    assert [m for m in markers(graph_case, "ci") if m.head_sha == head][-1].action == "fix"
+    assert len(harness.turns) == 2
 
 
 @pytest.mark.unit

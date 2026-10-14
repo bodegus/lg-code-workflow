@@ -11,6 +11,16 @@ from lgcw.models.config import Limits, RequiredCheck
 from lgcw.models.github import JobView, PrSnapshot, RunView
 
 
+def no_user_steps_started(job: JobView) -> bool:
+    """Trust complete GitHub step metadata, never a name chosen by a workflow."""
+    return job.steps_observed and not any(
+        not (step.number == 1 and step.name == "Set up job")
+        and step.status != "queued"
+        and step.conclusion != "skipped"
+        for step in job.steps
+    )
+
+
 def owned_runs(runs: Sequence[RunView], repo: str, pr: PrSnapshot) -> tuple[RunView, ...]:
     """Reject same-commit executions from another event, repository, branch or PR."""
     return tuple(
@@ -19,7 +29,15 @@ def owned_runs(runs: Sequence[RunView], repo: str, pr: PrSnapshot) -> tuple[RunV
         if run.head_repository == repo
         and run.head_branch == pr.head_ref
         and run.event in {"pull_request", "push"}
-        and (run.event != "pull_request" or pr.number in run.pull_requests)
+        and (
+            run.event != "pull_request"
+            or (
+                run.pull_requests == (pr.number,)
+                and len(run.pr_associations) == 1
+                and run.pr_associations[0].number == pr.number
+                and run.pr_associations[0].base_ref == pr.base_ref
+            )
+        )
     )
 
 
@@ -84,7 +102,10 @@ def classify(
             job.conclusion in {"failure", "timed_out", "startup_failure"}
             or (
                 job.conclusion == "cancelled"
-                and TIMEOUT_ANNOTATION.search("\n".join(job.annotations))
+                and (
+                    TIMEOUT_ANNOTATION.search("\n".join(job.annotations))
+                    or no_user_steps_started(job)
+                )
             )
             for job in failing
         )

@@ -16,8 +16,13 @@ _PATH = re.compile(r"(?:[A-Za-z]:)?/(?:[^\s:]+/)*[^\s:]+")
 
 def clean_evidence(text: str) -> str:
     """Remove terminal control sequences and controls except newline and tab."""
-    text = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\|$)", "", text)
-    text = re.sub(r"\x1b[P^_X][\s\S]*?(?:\x1b\\|$)", "", text)
+    # A missing terminator must never consume later failure lines. Bound even a single
+    # hostile line; any excess remains ordinary evidence instead of disappearing.
+    text = re.sub(
+        r"\x1b(?:\]|[P^_X])[^\r\n\x07\x1b]{0,4096}(?:\x07|\x1b\\)?",
+        "[terminal control removed]",
+        text,
+    )
     text = _ANSI.sub("", text)
     return redact(re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", text))
 

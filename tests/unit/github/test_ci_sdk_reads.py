@@ -235,3 +235,166 @@ async def test_classic_404_uses_explicit_classic_state(
     else:
         with pytest.raises(RequiredPolicyError):
             await required_policy(sdk, "example", "sandbox", "main")
+
+
+@pytest.mark.unit
+async def test_workflow_specific_base_query_ignores_150_unrelated_runs() -> None:
+    from lgcw.github.client import latest_base_run
+
+    calls: list[str] = []
+    unrelated = [{"id": i} for i in range(150)]
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        if "/actions/workflows/" in request.url.path:
+            assert request.url.path.endswith("/actions/workflows/pr-only.yml/runs")
+            assert request.url.params["per_page"] == "1"
+            assert request.url.params["branch"] == "main"
+            assert request.url.params["event"] == "push"
+            assert request.url.params["status"] == "completed"
+            return httpx.Response(
+                200, json={"total_count": 0, "workflow_runs": []}, request=request
+            )
+        return httpx.Response(
+            200, json={"total_count": len(unrelated), "workflow_runs": unrelated}, request=request
+        )
+
+    sdk = GitHub(
+        "unit-synthetic",
+        auto_retry=False,
+        http_cache=False,
+        async_transport=httpx.MockTransport(respond),
+    )
+    assert (
+        await latest_base_run(sdk, "example", "sandbox", ".github/workflows/pr-only.yml", "main")
+        is None
+    )
+    assert len(calls) == 1 and "pr-only.yml" in calls[0]
+
+
+def raw_ci_run(identifier: int = 1) -> dict[str, object]:
+    """Minimal wire payload for the workflow's strict boundary model."""
+    return {
+        "id": identifier,
+        "name": "CI",
+        "path": ".github/workflows/ci.yml",
+        "event": "pull_request",
+        "status": "completed",
+        "conclusion": "success",
+        "head_sha": "a" * 40,
+        "run_attempt": 1,
+        "head_branch": "lgcw/issue-1",
+        "head_repository": {"full_name": "example/sandbox"},
+        "pull_requests": [{"number": 100, "base": {"ref": "main"}}],
+    }
+
+
+@pytest.mark.unit
+async def test_impostor_runs_do_not_spend_cap_or_hydrate_startup_suites() -> None:
+    from lgcw.github.client import read_workflow_runs
+    from tests.unit.ci.cases import pr
+
+    rows = [
+        raw_ci_run(i)
+        | {"head_branch": "other", "conclusion": "startup_failure", "check_suite_id": i}
+        for i in range(150)
+    ] + [raw_ci_run(200)]
+    calls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        assert request.url.path.endswith("/actions/runs")
+        return httpx.Response(
+            200, json={"total_count": len(rows), "workflow_runs": rows}, request=request
+        )
+
+    sdk = GitHub(
+        "unit-synthetic",
+        auto_retry=False,
+        http_cache=False,
+        async_transport=httpx.MockTransport(respond),
+    )
+    current = pr().model_copy(update={"number": 100})
+    result = await read_workflow_runs(sdk, "example/sandbox", "a" * 40, current)
+    assert [run.run_id for run in result] == [200] and len(calls) == 1
+
+
+@pytest.mark.unit
+async def test_owned_run_cap_asks_at_101() -> None:
+    from lgcw.github.client import read_workflow_runs
+    from tests.unit.ci.cases import pr
+
+    rows = [raw_ci_run(i) for i in range(101)]
+    sdk = GitHub(
+        "unit-synthetic",
+        auto_retry=False,
+        http_cache=False,
+        async_transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, json={"total_count": len(rows), "workflow_runs": rows}, request=request
+            )
+        ),
+    )
+    with pytest.raises(CiEvidenceLimitError, match="owned run"):
+        await read_workflow_runs(
+            sdk, "example/sandbox", "a" * 40, pr().model_copy(update={"number": 100})
+        )
+
+
+@pytest.mark.unit
+async def test_per_run_job_cap_asks_at_201() -> None:
+    from lgcw.github.client import read_run_jobs
+
+    rows = [
+        {
+            "id": i,
+            "run_id": 1,
+            "name": f"test-{i}",
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+            "html_url": "https://example.test/job",
+            "steps": [],
+        }
+        for i in range(201)
+    ]
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        data = (
+            {"total_count": len(rows), "jobs": rows}
+            if request.url.path.endswith("/jobs")
+            else raw_ci_run()
+        )
+        return httpx.Response(200, json=data, request=request)
+
+    sdk = GitHub(
+        "unit-synthetic",
+        auto_retry=False,
+        http_cache=False,
+        async_transport=httpx.MockTransport(respond),
+    )
+    with pytest.raises(CiEvidenceLimitError, match="job count"):
+        await read_run_jobs(sdk, "example/sandbox", 1)
+
+
+@pytest.mark.unit
+async def test_startup_suite_cap_asks_at_101() -> None:
+    from lgcw.github.client import execution_from_rest
+
+    sdk = GitHub(
+        "unit-synthetic",
+        auto_retry=False,
+        http_cache=False,
+        async_transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, json={"total_count": 101, "check_runs": []}, request=request
+            )
+        ),
+    )
+    with pytest.raises(CiEvidenceLimitError, match="startup check"):
+        await execution_from_rest(
+            sdk,
+            "example",
+            "sandbox",
+            raw_ci_run() | {"conclusion": "startup_failure", "check_suite_id": 1},
+        )

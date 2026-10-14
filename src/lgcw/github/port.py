@@ -66,6 +66,10 @@ class GitHubPort(Protocol):
         """Find an open PR for a branch."""
         ...
 
+    async def open_prs_for_head(self, repo: str, head_branch: str) -> tuple[PrSnapshot, ...]:
+        """Read open PR identities sharing a repository's head branch."""
+        ...
+
     async def get_pr(self, repo: str, number: int) -> PrSnapshot:
         """Read the current head and merge conditions."""
         ...
@@ -127,7 +131,9 @@ class GitHubPort(Protocol):
         """Resolve a thread after recording the matching disposition."""
         ...
 
-    async def runs_for_sha(self, repo: str, head_sha: str) -> list[RunView]:
+    async def runs_for_sha(
+        self, repo: str, head_sha: str, pr: PrSnapshot | None = None
+    ) -> list[RunView]:
         """Read workflow runs for an exact head."""
         ...
 
@@ -147,7 +153,9 @@ class GitHubPort(Protocol):
         """Request a rerun of failed jobs."""
         ...
 
-    async def latest_base_jobs(self, repo: str, workflow: str, branch: str) -> list[JobView]:
+    async def latest_base_jobs(
+        self, repo: str, workflow: str, branch: str, workflow_path: str = ""
+    ) -> list[JobView]:
         """Read the latest completed base push run's jobs for a workflow."""
         ...
 

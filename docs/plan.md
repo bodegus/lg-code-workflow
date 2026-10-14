@@ -519,6 +519,12 @@ An unchanged approved proposal resumes at gate with zero additional paid turns.
 - [x] **Step 4: Run** `make check` → PASS.
 - [x] **Step 5: Commit** `feat(graph): CI wait and fix-or-move-on`.
 
+T15 R2 qualification:903 unit tests,3 live deselected,96.14% coverage;18/18 guard removals
+killed. Structural service phase, one transient rerun then builder, unique PR/base ownership,
+cancelled timeout dispatch, workflow-specific base lookup (actual live filename correction),
+and bounded terminal/feedback evidence. D-036 R2 and docs/validation/2026-10-14-t15-r2.md
+record policy changes and the partial provenance live evidence. Full execution remains T17.
+
 ### Task T16: Nodes — review (with verify) and merge_ready
 
 **Files:**

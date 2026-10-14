@@ -59,3 +59,21 @@ match. The CLOSED fixture has no association. Universality across all open GitHu
 unproven; no broader guarantee is inferred from one run. No ownership-filter change follows:
 ci_wait stops closed PRs before selecting runs, and its open-PR rule fails closed on missing
 associations. The real T17 run must qualify its actual metadata and complete workflow separately.
+
+## R2 structural ownership probe
+
+Question/expectation: does the repaired public SDK boundary retain base.ref and identify exactly
+one open PR for the current own branch? Expect yes for current PR5; no universal guarantee.
+
+```text
+LGCW_LIVE=1 uv run python spikes/2026-10-14-run-associations/r2_probe.py
+head=bbb392026f5ebec05f856bbe7bb4faba23c8c872
+pr_base=codex/t14-build-gate-publish
+open_branch_prs=[[5, codex/t14-build-gate-publish]]
+run=38492417314 event=pull_request conclusion=success
+pr_associations=[{number:5, base_ref:codex/t14-build-gate-publish}]
+model_turns=0 github_writes=0
+```
+
+Confirmed for this run: exact branch/head and unique PR/base association survive the repaired
+read/filter. Missing/ambiguous metadata still fails closed; closed fixtures do not relax policy.

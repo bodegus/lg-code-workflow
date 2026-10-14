@@ -1019,3 +1019,60 @@ is inferred. The CI node already stops closed PRs before selecting executions; n
 policy change follows. Missing open associations continue to fail closed and the actual T17 run
 must qualify its own metadata. Zero model turns/GitHub writes; exact transcript in
 `docs/spikes/2026-10-14-run-associations.md`.
+
+
+### D-036 R2 corrections: bounded transient cost and structural provenance
+
+- **Authority:** reviewer PR5 comment6158430183 explicitly revises the CI policy. This section
+  supersedes the earlier annotation-path/output authority, user setup-name allowlist and
+  per-class rerun-on-recurrence owner asks. Infra/resources/flaky share at most one automatic
+  rerun per head; another genuine failure on a rerun head goes to the builder with downloaded
+  evidence even if its apparent class changes or becomes pre-existing. Existing blocked,
+  approval, policy, deadline and hard limits still ask. Successful flaky reruns retain the note.
+- **Evidence:** a path (including `.github`, `.github/x`, None) and check-run output are never
+  service provenance. Preserve numbered JobStep metadata plus whether the complete step list was
+  observed. Infra may use GitHub's own step number1 named exactly Set up job failing, startup
+  job conclusions, or runner-loss/cancellation before any user step starts. Missing step metadata
+  cannot prove this phase. Resource patterns likewise need this phase. User setup names and
+  network prose grant no rerun, including Install dependencies and a user Set up job at number2;
+  those failures go to the builder. This is stricter than scanning only the failing step's network
+  section, and prevents scanning another step's network output entirely. service_output remains
+  recorded evidence, with its former routing authority removed. Pytest flaky detection requires
+  all FAILED identifiers known, one summary whose failed count matches, and no error lines.
+- **Terminal evidence:** OSC/DCS/APC/PM/SOS removal consumes at most4096 characters on one line
+  and leaves a placeholder. Unterminated strings never consume subsequent failure lines. The
+  classifier, resumed builder and saved -full.log are each checked with all five variants.
+- **Ownership:** PR association is not a triggering-PR proof. Preserve association base.ref,
+  require a unique matching PR/base, and ask on multiple run associations or another open PR
+  sharing the branch. Check again before intent and after its write, before dispatch. The fake
+  can freeze PR head independently of branch head, proving both halves of the guards.
+- **Timeout dispatch:** compare fresh conclusion to the observed conclusion, including cancelled
+  timeout runs. Validate before recording intent and repeat after it for races. A changed run
+  before intent cannot strand an unknown intent. Crash-and-rerun behavior remains exactly once.
+- **SDK ladder:** D-008 remains applicable; githubkit0.16.1 public async_list_workflow_runs accepts
+  workflow_id as an int or string path. Query that workflow path directly with branch, event=push,
+  status=completed, per_page=1. No run means empty baseline, never a repository-wide 100-run search.
+  Filter raw run ownership before the owned-run cap and startup-suite hydration. Thin SDK read
+  helpers expose these existing adapter boundaries to synthetic HTTP unit tests; no new client,
+  runtime package, credential authority or model call. Existing job/suite/aggregate caps retained.
+- **Required-policy conservatism (R2-F8):** retain the current conservative unresolved-context
+  union: a same-named job cannot prove which workflow a protection context intends. An unrelated
+  startup-failed Nightly can therefore ask, even with a same-named passing job elsewhere. This
+  intentional fail-closed behavior is documented rather than narrowed without policy identity.
+  Unsupported workflows, required_deployments, code_scanning and merge_queue rules now ask.
+- **Feedback:** retain selected failure first, 2 KiB annotations, 8 KiB/job and16 KiB aggregate;
+  reserve a bounded also failing (omitted) identity line when evidence cannot fit. A compact third
+  job still retains its log if enough space remains; the existing third-tail assertion is kept.
+- **Live qualification:** real `.github` user-command annotations and empty check output are
+  pinned in tests/fixtures/ci/provenance-observation.json. No real runner-loss/literal printed
+  ::error specimen was available. R2-F12 is explicitly inconclusive for those two shapes, carried
+  to T17 qualification; path/output are no longer routing authorities. No failure manufactured,
+  models dispatched or GitHub writes: docs/spikes/2026-10-14-ci-provenance.md.
+- **Proof:** docs/validation/2026-10-14-t15-r2.md records reproductions, guard removals and final
+  make check. T16/T17 and the full real version-bump execution remain unqualified here.
+- **Live base-query correction:** the public SDK accepts a workflow identifier string, but the
+  actual endpoint returned404 for .github/workflows/ci.yml and200 for ci.yml. Normalize the
+  filename before the call; the strengthened synthetic route regression failed first. Actual
+  repaired latest_base_jobs read returned run38473073579/check/success, zero models/writes.
+  Transcript: docs/spikes/2026-10-14-base-workflow.md. A malformed step list missing numbers also
+  cannot claim complete observation; its negative regression failed before tightening the flag.

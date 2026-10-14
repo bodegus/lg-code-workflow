@@ -25,12 +25,14 @@ from lgcw.github.port import (
 from lgcw.live import require_live
 from lgcw.models.github import (
     IssueComment,
+    JobStep,
     JobView,
     PrDocument,
     PrReview,
     PrSnapshot,
     ReviewCommentDraft,
     ReviewThread,
+    RunPullRequest,
     RunView,
     ThreadComment,
 )
@@ -97,9 +99,9 @@ def _required_context(raw: dict[str, Any], app_key: str) -> str:
 
 def required_contexts_from_rule(raw: dict[str, Any]) -> tuple[str, ...]:
     """Extract required contexts from a validated SDK rule; missing policy fails closed."""
-    if raw.get("type") == "workflows":
+    if raw.get("type") in {"workflows", "required_deployments", "code_scanning", "merge_queue"}:
         raise RequiredPolicyError(
-            "Required workflows rule is unsupported by the Actions policy adapter."
+            f"Required {raw['type']} rule is unsupported by the Actions policy adapter."
         )
     if raw.get("type") != "required_status_checks":
         return ()
@@ -173,6 +175,17 @@ def job_from_rest(data: dict[str, Any], annotations: list[dict[str, Any]]) -> Jo
             for step in data.get("steps", [])
             if step.get("conclusion") in {"failure", "cancelled", "timed_out"}
         ),
+        steps=tuple(
+            JobStep(
+                number=step["number"],
+                name=step["name"],
+                status=step["status"],
+                conclusion=step.get("conclusion"),
+            )
+            for step in data.get("steps", [])
+            if "number" in step
+        ),
+        steps_observed="steps" in data and all("number" in step for step in data["steps"]),
         annotations=tuple(
             "\n".join(
                 str(item.get(key) or "") for key in ("title", "message", "raw_details")
@@ -217,6 +230,11 @@ def _run_from_rest(data: dict[str, Any]) -> RunView:
         head_branch=data.get("head_branch"),
         head_repository=(data.get("head_repository") or {}).get("full_name"),
         pull_requests=tuple(pr["number"] for pr in data.get("pull_requests", ())),
+        pr_associations=tuple(
+            RunPullRequest(number=pr["number"], base_ref=pr["base"]["ref"])
+            for pr in data.get("pull_requests", ())
+            if (pr.get("base") or {}).get("ref")
+        ),
         workflow_path=data.get("path", ""),
         startup_error=data.get("startup_error", ""),
     )
@@ -277,6 +295,25 @@ async def bounded_rows[T](rows: AsyncIterator[T], limit: int, label: str) -> lis
             raise CiEvidenceLimitError(f"CI {label} count exceeds the {limit} observation limit.")
         result.append(row)
     return result
+
+
+async def latest_base_run(
+    sdk: GitHub[TokenAuthStrategy], owner: str, name: str, workflow_path: str, branch: str
+) -> int | None:
+    """Ask Actions for one completed base push run of this workflow only."""
+    if not workflow_path:
+        raise RequiredPolicyError("CI workflow path is missing; cannot qualify its base run.")
+    response = await sdk.rest.actions.async_list_workflow_runs(
+        owner,
+        name,
+        workflow_path.rsplit("/", 1)[-1],
+        branch=branch,
+        event="push",
+        status="completed",
+        per_page=1,
+    )
+    items = response.json()["workflow_runs"]
+    return items[0]["id"] if items else None
 
 
 async def download_job_log(
@@ -348,6 +385,81 @@ async def required_policy(
         contexts.update(raw.get("contexts", ()))
         contexts.update(_required_context(check, "app_id") for check in raw.get("checks", ()))
     return tuple(sorted(contexts))
+
+
+async def read_workflow_runs(
+    sdk: GitHub[TokenAuthStrategy], repo: str, head_sha: str, pr: PrSnapshot | None
+) -> list[RunView]:
+    """Filter ownership before hydration and the owned execution cap."""
+    owner, name = repo.split("/", 1)
+    runs: list[RunView] = []
+    items: AsyncIterator[dict[str, Any]] = sdk.rest.paginate(
+        sdk.rest.actions.async_list_workflow_runs_for_repo,
+        lambda response: response.json()["workflow_runs"],
+        owner=owner,
+        repo=name,
+        head_sha=head_sha,
+        per_page=100,
+    )
+    async for raw in items:
+        view = _run_from_rest(raw)
+        if pr is not None and (
+            view.head_sha != head_sha
+            or view.head_repository != repo
+            or view.head_branch != pr.head_ref
+            or view.event not in {"pull_request", "push"}
+            or (view.event == "pull_request" and pr.number not in view.pull_requests)
+        ):
+            continue
+        if len(runs) >= _MAX_RUNS:
+            raise CiEvidenceLimitError("CI owned run count exceeds the 100 observation limit.")
+        runs.append(await execution_from_rest(sdk, owner, name, raw))
+    return runs
+
+
+async def read_run_jobs(sdk: GitHub[TokenAuthStrategy], repo: str, run_id: int) -> list[JobView]:
+    """Read complete bounded job metadata and failure annotations through the SDK."""
+    owner, name = repo.split("/", 1)
+    response = await sdk.rest.actions.async_get_workflow_run(owner, name, run_id)
+    run: dict[str, Any] = dict(response.json())
+    jobs: list[JobView] = []
+    items: AsyncIterator[dict[str, Any]] = sdk.rest.paginate(
+        sdk.rest.actions.async_list_jobs_for_workflow_run,
+        lambda response: response.json()["jobs"],
+        owner=owner,
+        repo=name,
+        run_id=run_id,
+        filter_="latest",
+        per_page=100,
+    )
+    async for raw in items:
+        if len(jobs) >= _MAX_JOBS:
+            raise CiEvidenceLimitError("CI job count exceeds the 200 observation limit.")
+        raw["workflow_name"] = _run_from_rest(run).workflow
+        raw["run_attempt"] = raw.get("run_attempt") or run["run_attempt"]
+        annotations: list[dict[str, Any]] = []
+        if raw.get("conclusion") in {"failure", "cancelled", "timed_out"} and raw.get(
+            "check_run_url"
+        ):
+            check_id = int(urlsplit(raw["check_run_url"]).path.rstrip("/").rsplit("/", 1)[-1])
+            check_response = await sdk.rest.checks.async_get(owner, name, check_id)
+            check_output = check_response.json().get("output", {})
+            raw["service_output"] = "\n".join(
+                str(check_output.get(key) or "") for key in ("title", "summary", "text")
+            )
+            annotations = [
+                _rest_data(annotation)
+                async for annotation in sdk.rest.paginate(
+                    sdk.rest.checks.async_list_annotations,
+                    lambda response: response.parsed_data,
+                    owner=owner,
+                    repo=name,
+                    check_run_id=check_id,
+                    per_page=100,
+                )
+            ]
+        jobs.append(job_from_rest(raw, annotations))
+    return jobs
 
 
 class GitHubClient(GitHubPort):
@@ -465,6 +577,26 @@ class GitHubClient(GitHubPort):
             if pr.head.ref == head_branch:
                 return await self.get_pr(repo, pr.number)
         return None
+
+    async def open_prs_for_head(self, repo: str, head_branch: str) -> tuple[PrSnapshot, ...]:
+        """Read matching open identities; two suffice to prove ambiguity."""
+        owner, name = repo.split("/", 1)
+        sdk = self._sdk()
+        found: list[PrSnapshot] = []
+        items: AsyncIterator[SdkPullRequestSimple] = sdk.rest.paginate(
+            sdk.rest.pulls.async_list,
+            owner=owner,
+            repo=name,
+            state="open",
+            head=f"{owner}:{head_branch}",
+            per_page=100,
+        )
+        async for item in items:
+            if item.head.ref == head_branch:
+                found.append(await self.get_pr(repo, item.number))
+                if len(found) >= 2:
+                    break
+        return tuple(found)
 
     async def get_pr(self, repo: str, number: int) -> PrSnapshot:
         """Re-read current head/merge conditions and every page of PR labels."""
@@ -659,23 +791,11 @@ class GitHubClient(GitHubPort):
                 {"input": {"threadId": node_id, "resolutionReason": reason}},
             )
 
-    async def runs_for_sha(self, repo: str, head_sha: str) -> list[RunView]:
-        """Read exact-head runs using the SDK's Link-header paginator."""
-        owner, name = repo.split("/", 1)
-        sdk = self._sdk()
-        items = await bounded_rows(
-            sdk.rest.paginate(
-                sdk.rest.actions.async_list_workflow_runs_for_repo,
-                lambda response: response.parsed_data.workflow_runs,
-                owner=owner,
-                repo=name,
-                head_sha=head_sha,
-                per_page=100,
-            ),
-            _MAX_RUNS,
-            "run",
-        )
-        return [await execution_from_rest(sdk, owner, name, _rest_data(item)) for item in items]
+    async def runs_for_sha(
+        self, repo: str, head_sha: str, pr: PrSnapshot | None = None
+    ) -> list[RunView]:
+        """Read owned exact-head runs using the SDK Link-header paginator."""
+        return await read_workflow_runs(self._sdk(), repo, head_sha, pr)
 
     async def get_run(self, repo: str, run_id: int) -> RunView:
         """Read fresh execution identity through the pinned public SDK."""
@@ -684,49 +804,8 @@ class GitHubClient(GitHubPort):
         return await execution_from_rest(self._sdk(), owner, name, _rest_data(response.parsed_data))
 
     async def jobs_for_run(self, repo: str, run_id: int) -> list[JobView]:
-        """Read latest-attempt jobs and annotations for failed/cancelled checks."""
-        owner, name = repo.split("/", 1)
-        sdk = self._sdk()
-        response = await sdk.rest.actions.async_get_workflow_run(owner, name, run_id)
-        run = response.parsed_data
-        jobs: list[JobView] = []
-        async for item in sdk.rest.paginate(
-            sdk.rest.actions.async_list_jobs_for_workflow_run,
-            lambda response: response.parsed_data.jobs,
-            owner=owner,
-            repo=name,
-            run_id=run_id,
-            filter_="latest",
-            per_page=100,
-        ):
-            if len(jobs) >= _MAX_JOBS:
-                raise CiEvidenceLimitError("CI job count exceeds the 200 observation limit.")
-            raw = _rest_data(item)
-            raw["workflow_name"] = _run_from_rest(_rest_data(run)).workflow
-            raw["run_attempt"] = raw.get("run_attempt") or run.run_attempt
-            annotations: list[dict[str, Any]] = []
-            if raw.get("conclusion") in {"failure", "cancelled", "timed_out"} and raw.get(
-                "check_run_url"
-            ):
-                check_id = int(urlsplit(raw["check_run_url"]).path.rstrip("/").rsplit("/", 1)[-1])
-                check_response = await sdk.rest.checks.async_get(owner, name, check_id)
-                check_output = _rest_data(check_response.parsed_data).get("output", {})
-                raw["service_output"] = "\n".join(
-                    str(check_output.get(key) or "") for key in ("title", "summary", "text")
-                )
-                annotations = [
-                    _rest_data(annotation)
-                    async for annotation in sdk.rest.paginate(
-                        sdk.rest.checks.async_list_annotations,
-                        lambda response: response.parsed_data,
-                        owner=owner,
-                        repo=name,
-                        check_run_id=check_id,
-                        per_page=100,
-                    )
-                ]
-            jobs.append(job_from_rest(raw, annotations))
-        return jobs
+        """Read latest-attempt jobs including failure and cancellation evidence."""
+        return await read_run_jobs(self._sdk(), repo, run_id)
 
     async def job_log(self, repo: str, job_id: int) -> str:
         """Read a bounded complete log, preserving annotations if GitHub has no log."""
@@ -739,27 +818,13 @@ class GitHubClient(GitHubPort):
         async with self._mutation():
             await self._sdk().rest.actions.async_re_run_workflow_failed_jobs(owner, name, run_id)
 
-    async def latest_base_jobs(self, repo: str, workflow: str, branch: str) -> list[JobView]:
+    async def latest_base_jobs(
+        self, repo: str, workflow: str, branch: str, workflow_path: str = ""
+    ) -> list[JobView]:
         """Read jobs from the latest completed push run for this exact base/workflow."""
         owner, name = repo.split("/", 1)
-        sdk = self._sdk()
-        seen = 0
-        async for item in sdk.rest.paginate(
-            sdk.rest.actions.async_list_workflow_runs_for_repo,
-            lambda response: response.parsed_data.workflow_runs,
-            owner=owner,
-            repo=name,
-            branch=branch,
-            event="push",
-            status="completed",
-            per_page=100,
-        ):
-            seen += 1
-            if seen > _MAX_RUNS:
-                raise CiEvidenceLimitError("CI base run count exceeds the 100 observation limit.")
-            if _run_from_rest(_rest_data(item)).workflow == workflow:
-                return await self.jobs_for_run(repo, item.id)
-        return []
+        run_id = await latest_base_run(self._sdk(), owner, name, workflow_path, branch)
+        return await self.jobs_for_run(repo, run_id) if run_id is not None else []
 
     async def required_check_contexts(self, repo: str, branch: str) -> tuple[str, ...]:
         """Union both policies and fail closed on ambiguous permissions or workflow rules."""
