@@ -27,8 +27,8 @@ supersedes the former T16/T17 scope: prove one real issue end to end, then harde
 Before merge, fix P0/P1 and security-relevant P2s (credentials, protected paths, owner commands,
 wrong bytes and impostor CI). Other P2/P3 findings go in the single Hardening backlog under T17.
 One verifier per fix round; keep fixes small and report a fix exceeding about300lines before
-building it. T14 df82dc9 remains frozen under verification; T16 may start stacked on T15 only
-after the signed and independently verified T14 merge. D-037 records the revised scope.
+building it. T14 and T15 merged as 8f9b277 and eb2fa779 with signed review receipts;
+T16 starts from that verified main under reviewer6160095319. D-037 records the revised scope.
 
 ## Global Constraints
 
@@ -561,16 +561,19 @@ then re-review. The prototype round cap is2, then ask; an explicit retry grants 
 `merge_ready` marks ready through GraphQL, switches labels and writes an idempotent ready marker.
 Existing authority, head/content, CI and no-merge invariants remain binding.
 
-- [ ] **Step 1: Write failing tests:** `test_level_none_goes_straight_to_merge_ready`,
+- [x] **Step 1: Write failing tests:** `test_level_none_goes_straight_to_merge_ready`,
   `test_light_clean_review_marks_ready_once`, `test_blocking_finding_round_trip`,
   `test_round_cap_asks_then_retry_grants_one`, `test_no_merge_calls`.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the one-reviewer prototype and once-only readiness writes.
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(graph): minimal review loop and merge-ready`.
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** the one-reviewer prototype and once-only readiness writes.
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(graph): minimal review loop and merge-ready`.
 
 Verifier, disputed findings, thread resolution, interdiff range_from, three-lens deep review and
 review human-push adoption are deferred under the owner decision; see the backlog below.
+
+T16 local qualification:1003 units,3 live deselected,95.78% coverage; all five required cases
+and the crash/head/content/CI checks pass. No live/full CLI execution claimed by T16.
 
 ### Task T17: Minimal CLI, doctor, family-calendar config and live R1
 
@@ -610,6 +613,23 @@ first real run logs. Local optional work is preserved separately; it does not ch
 - 6159291252/stacked-PR (PR5): qualify association counting for stacked pull requests.
 - 6159291252/limits-docs (PR5): reconcile the dead per-head guard, configuration and documentation.
 - R2-F12 (PR5): real runner-loss and literal printed-::error live specimens remain unavailable.
+
+- U-1 (PR5/6159529351): qualify closed competitor PR history before adopting CI executions.
+- U-2 (PR5): make the one-rerun default/cap structural and kill the S13 mutant.
+- U-3 (PR5): clean and redact omitted failing-job identity lines.
+- U-4 (PR5): preserve same-line evidence after unterminated DCS/OSC introducers.
+- U-5 (PR5): accept timeout provenance only from structural service data.
+- U-6 (PR5): reconstruct owned PR identity from journaled pr_number rather than newest branch PR.
+- U-7 (PR5): kill surviving guards R4,E1/E5,F2,O8,O14,B6,S8/S9,N1d''.
+- 6159529351/steps-observed (PR5): distinguish numbered listed steps from a complete step inventory.
+- 6159529351/pytest-q (PR5): support flaky summaries without equals-sign bars.
+- V-NEW-1 (PR4/6159722453): recover approval/retry after denial following the local publication commit.
+- V-NEW-2 (PR4): avoid extra paid turns after restored gate intent/passing gate approval.
+- V-NEW-3 (PR4): kill gate pre-intent, before-push claims, finish_command, rebuild-precedence and blank-line mutants.
+- V-P3a (PR4): retain masked-span paragraph semantics after the whole-body HTML refusal.
+- V-P3b (PR4): scope approval revocation to relevant later commands and duplicate approvals.
+- V-P3c (PR4): avoid a charged fix after denial during a gate and subsequent reapproval.
+- V-P3d (PR4): re-ask after denial-ack crashes instead of dispatching a paid turn.
 - 6159291007/verifier: defer the fresh finding-verifier step until after first-run evidence.
 - 6159291007/disputes: defer disputed-finding handling until after first-run evidence.
 - 6159291007/threads: defer finding-thread resolution until after first-run evidence.

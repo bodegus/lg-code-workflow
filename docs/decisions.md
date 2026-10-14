@@ -1159,3 +1159,41 @@ must qualify its own metadata. Zero model turns/GitHub writes; exact transcript 
 - **Why:** the owner prioritizes the working issue-to-merge-ready path over successive edge-case
   review rounds. This revises the implementation scope, not the overall requested end state:
   a real CLI execution must still create a qualified merge-ready PR and survive the ci_wait restart.
+
+
+## D-038 — Minimal prototype review and exact-head readiness
+
+- **Authority:** D-037 and reviewer6160095319 permit T16 from verified main eb2fa779. Execute
+  none/light, map standard/deep to light and log configured/executed levels; only admitted P0/P1
+  block under the existing light location/confidence gate. No finding-verifier, inline threads,
+  disputes, interdiff packets or parallel lenses in this prototype.
+- **Durability and bounds:** a reviewer SessionMarker is the write-ahead dispatch fact, bound to
+  head and owner command. An unknown result asks rather than repeating a paid turn. A COMMENT
+  ReviewMarker carries its GateResult, with coherent blocker counts, in the same submission.
+  A lost submission response recovers that receipt, without a second turn or review. Blocking
+  evidence becomes the existing FeedbackMarker and resumes the existing builder. Two reviewer
+  attempts per run; a question-bound retry grants exactly one further round. Gate/CI/publication
+  reuse their existing code and limits. Legacy thread-based review receipts retain their routes.
+- **Readiness:** immutable commit and local content must match the successful measured gate;
+  current owned runs and the required-policy union are classified again. Head, branch, open state
+  and mergeability are read from GitHub. The body has an atomic RunMarker effect receipt;
+  draft state and observed labels recover their writes, then one exact-head ReadyMarker completes
+  the run. A post-ready-API head check refuses a ready receipt for a changed head. Issue edits are
+  reported against the frozen intake. No merge call is available or emitted.
+- **Dependency ladder:** D-009/D-025 already selected the thin git CLI adapter. LangGraph provides
+  orchestration, not local immutable git statistics or unified-hunk ranges. githubkit's remote
+  API models do not supply ranges tied to the local isolated review checkout. Retain the approved
+  CLI integration: commit_numstat adds immutable --numstat -z; a small stdlib regex/counter parser
+  admits complete ordinary-path hunks. No dependency, lockfile change, new client or tool layer.
+  Quoted paths, malformed/truncated hunks and a diff above262144bytes ask rather than guessing.
+  Revisit these conservative limits from real run logs, not by silently truncating review evidence.
+- **Test lifecycle:** reviewer6160199995 authorizes retaining the missing-registry assertion on an
+  explicitly incomplete map and adding complete default compilation; the T15 fixture restores
+  its review checkpoint after registry update, preserving all earlier assertions. A sibling fatal
+  compilation traceback migration is authorized in comment6160234750, with assertions verbatim.
+  These three are the complete list of lifecycle migrations; the standing authorization covers
+  additional missing-default fixtures only. ReviewMarker retains the configured level as the
+  monotonic floor, so a builder fix cannot lower a prior real review to none.
+- **Qualification:** docs/validation/2026-10-14-t16.md will retain commands and actual results.
+  All test services are fakes and local git. T16 requires no new live model turn; the full live
+  CLI qualification remains T17/R1. U-1..U-7 and V-NEW/P3 carry in the single T17 backlog.

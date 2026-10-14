@@ -132,6 +132,11 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
     reviews = ledger.reviews_for(push.head_sha)
     if not reviews:
         return route("review", "CI permits review")
+    if reviews[-1].result is not None:
+        return route(
+            "review" if reviews[-1].blocking else "merge_ready",
+            "recover prototype COMMENT review outcome",
+        )
     findings = {
         entry.comment_id
         for entry in ledger.entries

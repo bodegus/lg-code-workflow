@@ -13,7 +13,7 @@ from lgcw.models.feedback import Feedback
 from lgcw.models.handoff import BuildHandoff
 from lgcw.models.harness import Role, Usage
 from lgcw.models.issue import IssueSnapshot
-from lgcw.models.review import GatedFinding, Lens, ReviewLevel
+from lgcw.models.review import GatedFinding, GateResult, Lens, ReviewLevel
 
 
 class Command(Strict):
@@ -255,6 +255,18 @@ class ReviewMarker(Strict):
     blocking: int = Field(ge=0)
     nonblocking: int = Field(ge=0)
     review_id: int | None
+    result: GateResult | None = None
+    configured_level: ReviewLevel | None = None
+
+    @model_validator(mode="after")
+    def consistent_result(self) -> Self:
+        """Bind prototype blocker counts to the evidence carried in the COMMENT review."""
+        if self.result is not None and (
+            self.blocking != len(self.result.blocking)
+            or self.nonblocking != len(self.result.nonblocking)
+        ):
+            raise ValueError("review counts differ from recorded findings")
+        return self
 
 
 class FindingMarker(Strict):

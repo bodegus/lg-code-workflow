@@ -87,6 +87,10 @@ class WorkspacePort(Protocol):
         """Return NUL-delimited counts including untracked changes."""
         ...
 
+    async def commit_numstat(self, base_sha: str, head_sha: str) -> str:
+        """Return NUL-delimited statistics from the immutable published commit range."""
+        ...
+
     async def changed_paths(self, base_sha: str) -> tuple[str, ...]:
         """Return all changed paths including untracked files."""
         ...

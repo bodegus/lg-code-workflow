@@ -40,6 +40,7 @@ async def execute_ci(ctx: RunContext) -> RunOutcome:
     mapping: dict[Step, NodeFn] = {step: checkpoint for step in STEPS if step != "end"}
     mapping.update(DEFAULT_NODES)
     mapping["ci_wait"] = ci_wait
+    mapping["review"] = checkpoint  # T16 lifecycle migration authorized by comment6160199995.
     return await run_issue(ctx, nodes=mapping)
 
 
