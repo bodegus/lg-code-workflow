@@ -302,6 +302,20 @@ class GitWorkspace(WorkspacePort):
             output += f"{count}\t{path}\0"
         return output
 
+    async def commit_numstat(self, base_sha: str, head_sha: str) -> str:
+        """Size only immutable committed changes, ignoring local edits and new files."""
+        return await self._checked(
+            self._prepared().repo_dir,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--numstat",
+            "-z",
+            _sha(base_sha),
+            _sha(head_sha),
+            "--",
+        )
+
     async def changed_paths(self, base_sha: str) -> tuple[str, ...]:
         """List all changed paths, including both sides of renames as delete/add paths."""
         cwd = self._prepared().repo_dir

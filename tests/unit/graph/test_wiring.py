@@ -93,8 +93,15 @@ async def test_ask_failure_terminates_without_recursion(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 def test_missing_default_nodes_fail_explicitly() -> None:
+    from lgcw.graph.nodes import DEFAULT_NODES
+
     with pytest.raises(ValueError, match="missing"):
-        build_graph()
+        build_graph({name: node for name, node in DEFAULT_NODES.items() if name != "review"})
+
+
+@pytest.mark.unit
+def test_complete_default_registry_compiles() -> None:
+    assert set(STEPS) <= set(build_graph().get_graph().nodes)
 
 
 @pytest.mark.unit
@@ -164,8 +171,13 @@ async def test_node_error_records_redacted_traceback(tmp_path: Path) -> None:
 
 @pytest.mark.unit
 async def test_run_error_records_traceback(tmp_path: Path) -> None:
+    from lgcw.graph.nodes import DEFAULT_NODES
+
     ctx = context(tmp_path)
-    assert await run_issue(ctx) == "error"
+    incomplete: dict[Step, NodeFn] = {
+        name: node for name, node in DEFAULT_NODES.items() if name != "review"
+    }
+    assert await run_issue(ctx, nodes=incomplete) == "error"
     events = (ctx.log.run_dir / "events.jsonl").read_text()
     assert '"kind":"run_error"' in events and "Traceback (most recent call last)" in events
     assert "in build_graph" in events
