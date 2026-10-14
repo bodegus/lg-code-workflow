@@ -947,3 +947,22 @@ our own code. Research references point into [research/](research/).
 - **Qualification:** docs/validation/2026-10-14-t14-r3.md. All mutation probes use a unique
   --basetemp per mutant; setup/import failures do not count as kills. No new dependencies, model
   turns, GitHub live writes or permission widening.
+
+
+### D-035 R4 — Fail closed on HTML-block issue bodies
+
+- **Authority:** PR4 review6159722453, R4-F1, the sole security-P2 merge blocker under the
+  prototype-first bar. The raw issue body is checked with CRLF/CR/LF boundaries before masking.
+  Any line whose first non-space/tab character is < disables all issue-body lgcw-allow
+  pre-authorization. This deliberately conservative rule includes HTML-like lines inside code
+  examples. Protected changes then use the existing explicit question/content-bound approval.
+- **Implementation:** two added lines, no masking extension or new dependency. Existing inline
+  comment/script/pre and fence protections remain; tests isolate them with inline openings so
+  the whole-body guard cannot hide a missing parser guard.
+- **Proof:** style, CDATA, processing instruction, details and hidden-div graph cases ask without
+  a protected push; a plain standalone allow paragraph still publishes. Pure cases cover all
+  named HTML types with CR/LF/CRLF and the four requested parser-guard isolations. Five guard
+  removals are killed in separate basetemp directories. Full transcript:
+  docs/validation/2026-10-14-t14-r4.md.
+- **Scope:** V-NEW-1..3 and V-P3a..d carry to the T16 PR's hardening backlog as requested. No
+  optional T17 patch is included here; df82dc9 remains the parent of this small security fix.
