@@ -1328,3 +1328,38 @@ read-only roots then pass together with the boundary suite (27 cases). The initi
 was interrupted at101 passing tests to add this necessary regression; no commit/push occurred.
 Final make check passes1063 units,6 live deselected,95.32% coverage (564.24s). The live check
 remains pending on merged source; no R2 CLI was run on this branch.
+
+
+Post-merge P1 qualification: PR11 merged as `0a1f3c6db44f19717df2244f1096fcce652c8e3f`.
+From that exact merged source, `LGCW_LIVE=1 uv run pytest -m live
+ tests/live/test_codex_smoke.py::test_restart_workspace_identity -s` passed (1 test,23.65s).
+Both actual resumed cwd and the complete explicit writable-path set matched the temporary root;
+`resume-proof.txt` contained `resumed`. Receipt: PR11/comment6168333557. No family-calendar CLI
+or command was involved; the separate signed-command prerequisite still applies.
+
+## D-042 — Blank-separated role signatures are command metadata, not authority
+
+**Date:** 2026-10-14. **Status:** accepted for the R2 prerequisite in
+[issue9/comment6167208491](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6167208491).
+
+The contributor contract requires manual comments to end in `-builder` or `-reviewer`, while an
+exact protected-path approval compares the parsed answer against `approve`. Previously a signed
+answer retained that trailer in its payload and caused a redundant builder turn instead of
+accepting the unchanged content-bound proposal. R2 observed this before the owner stopped the
+unauthorized responses; correcting parsing does not authorize those historical actions.
+
+Keep the existing first-nonempty-line command grammar. Remove exactly one terminal `-builder`,
+`-reviewer` or `-owner` line only when a blank line separates it from the payload. Preserve all
+other content, including adjacent signatures, quotes, unknown trailers and contradictory prose.
+A role signature never grants permission: allowed GitHub authors and workflow-marker rejection
+still run before command acceptance. Delegation remains an owner decision, and protected approval
+still requires exact `approve` text bound to the question's paths and content fingerprint.
+
+Tests first fail22 cases against the merged parser (19 already pass), then the same41-case
+selection passes after the small normalization. Compiled-graph cases cover all three trailers
+and prove an unchanged approved proposal publishes with one builder dispatch, not a second dispatch.
+No dependency, port, schema, credential, sandbox, routing, assertion, fixture or timeout change.
+The P1 live qualification above used merged source; no real command or CLI runs on this branch.
+
+Signed-command full qualification: `make check` passes1092 units,6 live deselected,95.33%
+coverage (741.71s). No real harness or family-calendar CLI ran from this unmerged branch.
