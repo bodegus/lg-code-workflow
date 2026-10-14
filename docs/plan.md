@@ -679,6 +679,12 @@ under reviewer6160563054; any landing is a separate PR after the first live run.
 
 ## Phase 1b — three runs and inspection (owner and agent together)
 
+R2 prerequisite from [issue9](https://github.com/bodegus/lg-code-workflow/issues/9): the separate
+P1 resume-path fix unwraps typed SDK cwd and binds each turn to the actual run worktree.
+Test-first refusal/round-trip and isolated read-only checkout cases pass; final make check passes
+1063 units at95.32% coverage. Live qualification is added
+and remains pending until the fix merges (owner requires merged harness code). D-041 records scope.
+
 Each run: the owner writes the issue (with acceptance criteria). The builder executes an
 authorized `uv run lgcw run <ref>`, then uses `inspecting-runs` and writes `docs/runs/<id>.md`.
 

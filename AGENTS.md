@@ -117,6 +117,13 @@ ends with its signature: `-builder` or `-reviewer`. Owner comments are signed `-
 and override both agents within the task's scope. A `-reviewer` comment is a binding instruction to
 the builder within the task's scope; scope or design disputes go to the owner.
 
+Run the real workflow only with merged harness code. Workflow answers, protected-path approvals
+and aborts belong to Alex. Delegated retries are limited to verified transient/head-move cases
+explicitly authorized by Alex. For family-calendar R2, all commands were reserved to Alex;
+his later direct step-3 delegation requires merged fixes, cron security corrections and a reviewer
+verdict on the exact protected proposal (D-041). Record delegation on GitHub before acting; never infer it from a general
+request to run an issue. No delegation here grants merge authority or credential provisioning.
+
 ## How to work
 
 - One plan task per PR. Branch `<agent>/<task-id>-<slug>` (e.g. `codex/t05-ci-classifier`).

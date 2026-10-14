@@ -1284,3 +1284,47 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
 - **Evidence:** [R1 inspection](runs/r1-proxy-addr-26.md) retains actual commands, cost, timeline,
   local receipt identities and hosted CI links. R1-OBS1..3 carry in the existing backlog; no new
   dependencies or speculative hardening. R2/R3 and their synthesis remain separate future work.
+
+## D-041 — Owner response boundaries and P1 resumed workspace identity
+
+- **Authority:** [owner decisions issue9](https://github.com/bodegus/lg-code-workflow/issues/9)
+  requires a separate P1 harness fix before resuming R2. Real workflow execution uses merged
+  harness code; no builder merges or pushes main. R1-OBS1/OBS4, CI policy migration, cron product
+  changes and signature parsing are excluded from this fix.
+- **Owner commands:** answers, protected approval and abort are owner-owned. The R2 restriction
+  extended to all commands. Earlier four builder responses were unauthorized and remain in the
+  R2 evidence; the later direct instruction “proceed - can you complete #3 I approve” narrowly
+  delegates step3 after merged fixes and cron security corrections. Its
+  [operator record](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6167192778)
+  does not authorize earlier responses, merges, credentials or unmerged harness execution.
+  Reviewer6167208491 accepts this scope and additionally requires the corrected protected diff
+  and fingerprint on issue9 plus a reviewer verdict before delegated exact approval.
+- **Cause:** SDK0.162.1 Thread.cwd is AbsolutePathBuf; str(value) produces root='path', not the
+  filesystem path. Repeated cold resumes nested it into cwd. Use the typed `.root` value.
+  FakeThread already returns the real SDK ThreadReadResponse model; previous tests did not
+  assert the cwd passed to a resumed turn. New assertions cover that actual type and path.
+- **Trusted identity:** CLI supplies run_directory(config, ref)/repo to CodexHarness. Fresh
+  start may bind an otherwise unbound harness from its trusted SessionSpec; cold saved metadata
+  cannot bind it. Every paid dispatch requires an existing absolute cwd resolving exactly to the
+  bound worktree. Fresh read-only sessions bind their independent immutable checkout from the
+  trusted SessionSpec; they cannot change the builder binding. Unknown cold read-only roots
+  fail closed. Relative, missing, other existing or unbound builder workspaces fail closed as
+  HarnessSessionLostError, preserving the graph's existing bounded handoff recovery.
+- **Interface:** optional worktree constructor input leaves HarnessPort/SessionRef unchanged;
+  standalone callers must supply it for cold resume. The existing live smoke's resumed harness
+  receives its same root explicitly; every assertion remains unchanged. Canonical resolution
+  permits platform path aliases without admitting another worktree. Role/network/deny-all
+  settings, credential environment, SDK pin, assertions and timeouts remain unchanged.
+- **Test first:** five new typed-SDK/identity cases failed before implementation (0.51s);
+  the full harness boundary selection then passed25 (3.91s). Added live test checks the resumed
+  turn_context's cwd, exact explicit writable path and an actual write after server restart.
+  It is not run before merge under Alex's merged-code instruction; post-merge live proof is
+  required before R2 resumes. No new dependency: approved SDK path model plus pathlib suffice.
+
+Initial full local qualification passed1061 units,6 live deselected,95.32% (582.71s). Before
+publishing, inspection of the real review node showed its immutable checkout differs from the
+builder root. Two added reviewer/verifier checkout tests failed (0.49s); per-session trusted
+read-only roots then pass together with the boundary suite (27 cases). The initial commit hook
+was interrupted at101 passing tests to add this necessary regression; no commit/push occurred.
+Final make check passes1063 units,6 live deselected,95.32% coverage (564.24s). The live check
+remains pending on merged source; no R2 CLI was run on this branch.

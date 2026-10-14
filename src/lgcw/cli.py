@@ -83,7 +83,7 @@ async def make_context(config: WorkflowConfig, ref: IssueRef) -> RunContext:
         issue_ref=ref,
         github=github,
         workspace=GitWorkspace(config.home, token_provider=tokens, allow_live=True),
-        harness=CodexHarness(config, allow_live=True),
+        harness=CodexHarness(config, allow_live=True, worktree=run_directory(config, ref) / "repo"),
         clock=clock,
         log=RunLog(run_directory(config, ref), clock=clock),
         workflow_login=login,

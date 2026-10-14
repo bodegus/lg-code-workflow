@@ -70,6 +70,76 @@ def tool_receipts(path: Path, needle: str) -> tuple[list[str], list[ShellReceipt
 
 
 @pytest.mark.live
+async def test_restart_workspace_identity(tmp_path: Path) -> None:
+    """Prove the resumed writable path matches the trusted temporary worktree."""
+    config = load_config(Path(__file__).parents[2], home=Path.home() / ".lgcw")
+    root = (tmp_path / "workspace").resolve()
+    root.mkdir()
+    subprocess.run(("git", "init", "-q", str(root)), check=True, timeout=5)
+    skill = tmp_path / "probe" / "SKILL.md"
+    skill.parent.mkdir()
+    skill.write_text(
+        "---\nname: probe\ndescription: Workspace identity qualification.\n---\n"
+        "Perform only the tiny requested operation and report its actual result.\n"
+    )
+    spec = SessionSpec(
+        role="builder",
+        cwd=root,
+        sandbox="workspace_write",
+        network=True,
+        effort="low",
+        model=config.model,
+    )
+
+    def turn(text: str) -> TurnInput:
+        return TurnInput(skill=str(skill), text=text, data=None, data_label=None)
+
+    first = CodexHarness(config, worktree=root)
+    try:
+        session = await first.start_session(spec)
+        await first.run_turn(
+            session,
+            turn("No tools. Return answer=first and ok=true."),
+            SmokeOutput,
+            heartbeat=lambda: None,
+        )
+    finally:
+        await first.close()
+    resumed = CodexHarness(config, worktree=root)
+    try:
+        result = await resumed.run_turn(
+            session,
+            turn(
+                "Use shell once: printf resumed > resume-proof.txt. Then return answer=resumed "
+                "and ok=true. No other operation."
+            ),
+            SmokeOutput,
+            heartbeat=lambda: None,
+        )
+        assert result.output == SmokeOutput(answer="resumed", ok=True)
+        assert (root / "resume-proof.txt").read_text() == "resumed"
+        assert result.rollout_path is not None
+        contexts = [
+            record["payload"]
+            for line in result.rollout_path.read_text().splitlines()
+            if (record := json.loads(line)).get("type") == "turn_context"
+        ]
+        context = contexts[-1]
+        assert context["cwd"] == str(root)
+        entries = context["file_system_sandbox_policy"]["entries"]
+        explicit_writes = {
+            entry["path"]["path"]
+            for entry in entries
+            if entry["access"] == "write" and entry["path"]["type"] == "path"
+        }
+        assert explicit_writes == {str(root)}
+        print(f"cross_server_resume=True cwd={context['cwd']}")
+        print(f"explicit_workspace_writes={sorted(explicit_writes)} resumed_write=True")
+    finally:
+        await resumed.close()
+
+
+@pytest.mark.live
 async def test_codex_smoke(tmp_path: Path) -> None:
     config = load_config(Path(__file__).parents[2], home=Path.home() / ".lgcw")
     assert (config.codex_home / "auth.json").is_file(), "dedicated owner-created login required"
@@ -151,7 +221,7 @@ async def test_codex_smoke(tmp_path: Path) -> None:
         await harness.close()
         await assert_exited(servers[0][1])
 
-    resumed = CodexHarness(config, sdk_factory=factory)
+    resumed = CodexHarness(config, sdk_factory=factory, worktree=root)
     _, resumed_pid = servers[-1]
     try:
         with pytest.raises(HarnessSessionLostError, match="no rollout found"):
