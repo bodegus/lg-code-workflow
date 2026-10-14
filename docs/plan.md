@@ -586,10 +586,10 @@ exit0 success/merge-ready,2 waiting,3 blocked/closed,1 error. `make_context(conf
 is the sole real-adapter allow_live=True construction boundary. `doctor(config, repo) -> list[Check]`
 checks gh login, Codex account login without a model turn, git, configured tools and writable home.
 
-- [ ] **Step 1: Write failing tests:** CLI parsing/exit codes with injected fake context;
+- [x] **Step 1: Write failing tests:** CLI parsing/exit codes with injected fake context;
   doctor missing npm; live configured workflow/job identity on real recent family-calendar runs.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** run/report/doctor and the family-calendar config from its actual CI:
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** run/report/doctor and the family-calendar config from its actual CI:
   Node24.20.0, Node26.8.1, Container build and smoke test (re-confirm); setup npm ci, gate npm run check.
 - [ ] **Step 4: Run** `make check` → PASS. The live smoke is Phase1bR1, the family-calendar
   proxy-addr production-audit fix. Once Alex has created its issue, run
@@ -598,10 +598,16 @@ checks gh login, Codex account login without a model turn, git, configured tools
   Proposed owner-created issue text: [R1 issue proposal](requests/r1-proxy-addr-issue.md).
 - [ ] **Step 5: Commit** `feat(cli): doctor, run, report and family-calendar live smoke`.
 
+T17 is authorized stacked on2108897 by reviewer6160563054. Optional09c6c78 is excluded;
+it stays on its local branch for a separate post-first-run PR. Doctor and the actual configured-job
+identity check pass; the full CLI R1 kill/resume is not run because Alex has not created its issue.
+D-039 records the observed host-version prerequisite and local qualified toolchain.
+
 #### Hardening backlog
 
 Non-blocking items are recorded here, one line per review ID/source, for prioritization from the
-first real run logs. Local optional work is preserved separately; it does not change df82dc9.
+first real run logs. Local optional09c6c78 is preserved separately and is excluded from T17
+under reviewer6160563054; any landing is a separate PR after the first live run.
 
 - R3-F6 (PR4): unused granted session-loss marker can allow one extra fresh session/paid turn.
 - R3-F7 (PR4): approved handoff/diff mismatch should feed exact paths to a charged gate fix.

@@ -1,0 +1,37 @@
+full_name = "bodegus/family-calendar"
+default_branch = "main"
+allowed_authors = ["bodegus"]
+setup = ["npm ci"]
+gate = ["npm run check"]
+# Reconfirmed against main .github/workflows/ci.yml and real CI run 38441965084.
+required_checks = [
+  { workflow = "CI", job = "Node 24.20.0" },
+  { workflow = "CI", job = "Node 26.8.1" },
+  { workflow = "CI", job = "Container build and smoke test" },
+]
+protected_globs = [".github/**", "AGENTS.md", "CLAUDE.md", ".agents/**", ".claude/**", ".codex/**", ".env*", ".npmrc"]
+excluded_globs = ["package-lock.json"]
+source_globs = ["src/**", "public/**"]
+tests_globs = ["test/**"]
+docs_globs = ["**/*.md"]
+known_flaky = []
+pre_existing_policy = "note"
+
+[tool_minimums]
+node = [24, 20, 0]
+npm = [12, 0, 2]
+
+[tool_maximums]
+npm = [13, 0, 0]
+
+[[risk_classes]]
+name = "ci_supply_chain"
+globs = [".github/**", "Dockerfile", "compose*.yaml", "package.json", "package-lock.json", ".npmrc"]
+
+[[risk_classes]]
+name = "agent_instructions"
+globs = ["AGENTS.md", "CLAUDE.md", ".agents/**", ".claude/**", ".codex/**"]
+
+[[risk_classes]]
+name = "secrets_auth"
+globs = [".env*", "src/auth/**"]

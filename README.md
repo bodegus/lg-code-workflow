@@ -1,45 +1,71 @@
 # lg-code-workflow
 
-A LangGraph workflow that takes a GitHub issue to a **merge-ready pull request**, with plain code for
-every step and the OpenAI Codex agent only for building, reviewing and verifying findings. It never
-merges. The pull request is the run's record: decisions are PR comments with hidden markers,
-findings are review threads, and you steer a run by replying `/lgcw answer …`, `/lgcw retry` or
-`/lgcw abort` on the PR.
+A local LangGraph workflow from a GitHub issue to a **merge-ready pull request**. Plain code owns
+routing, git, GitHub writes, CI and limits. Codex builds and reviews. It never merges.
+The PR is the durable run record; rerunning the same issue reconstructs progress from its markers.
 
-**Status:** Phase 1 (local, on the owner's Mac), under construction. T0 toolchain, T1 models,
-T2 configuration, T3 ledger logic and T4 GitHub port/renderers/fake are implemented. Live adapters,
-graph nodes and the functional CLI are still to come. T6 CI qualification, bounded retry policy
-and log trimming pass the local gate. T7 review sizing and finding admission also pass locally. T8 local git workspace contracts pass
-against real temporary bare repositories. T9 supplies the typed harness port, fenced prompts,
-packaged step skills and in-memory fake; the real Codex adapter remains pending. T11 local
-run evidence and usage reports pass their contract tests. T10 requires the dedicated workflow
-login and its live SDK spike before qualification. T12 has a locally proven graph skeleton,
-reconciliation and runtime policies; default compilation refuses the still-missing T13–T16 nodes.
-T5's GitHub adapter passes local checks; its live contract is pending a usable issue-enabled
-sandbox (the existing OpenClaw fixture disables Issues). See decisions D-021/D-022.
-No complete live execution has been qualified yet. See the checked tasks in the plan.
+**Phase 1 prototype:** the CLI and none/light review path are implemented. The first complete real
+issue execution is still unqualified; T17/R1 tracks that live proof separately from local tests.
+Configured standard/deep reviews execute as one light review under D-037. Advanced review and
+hardening follow the first run's evidence.
 
 | Read | For |
 |---|---|
-| [AGENTS.md](AGENTS.md) | rules for anyone (human or agent) working here |
-| [docs/design.md](docs/design.md) | how it works |
-| [docs/plan.md](docs/plan.md) | what to build next, task by task |
-| [docs/decisions.md](docs/decisions.md) | decisions with evidence |
-| [docs/research/README.md](docs/research/README.md) | the research behind it (sources in `docs/research/notes/`) |
+| [AGENTS.md](AGENTS.md) | working rules and role boundaries |
+| [docs/design.md](docs/design.md) | architecture and current prototype override |
+| [docs/plan.md](docs/plan.md) | task and live-run qualification state |
+| [docs/decisions.md](docs/decisions.md) | decisions and evidence |
+| [docs/research/README.md](docs/research/README.md) | research |
 
-## Prerequisites (Phase 1)
+## Prerequisites
 
-- Python 3.13 and [uv](https://docs.astral.sh/uv/)
-- `gh` logged in as the owner (`gh auth status`)
-- A **separate** Codex login for the workflow:
-  `mkdir -p ~/.lgcw/codex && CODEX_HOME=~/.lgcw/codex codex login`
-  (never copy `~/.codex/auth.json`)
-
-## Quickstart (available after plan task T17)
+Use Python 3.13 and uv, git, and gh logged in as the configured owner. For family-calendar, put
+stable Node >=24.20.0 and npm >=12.0.2,<13 on PATH. `doctor` checks these configured bounds.
+The workflow uses its own Codex login at `~/.lgcw/codex`; never copy the desktop auth file and
+never run another Codex process on that home while the workflow is active.
 
 ```bash
 make setup
-uv run lgcw doctor --repo bodegus/family-calendar
-uv run lgcw run bodegus/family-calendar#12
-uv run lgcw report bodegus/family-calendar#12
+LGCW_CODEX_BIN="$(uv run python -c 'from codex_cli_bin import bundled_codex_path; print(bundled_codex_path())')"
+CODEX_HOME="$HOME/.lgcw/codex" "$LGCW_CODEX_BIN" login
 ```
+
+Alex's Mac has a prepared Node24.20.0/npm12.0.2 toolchain under `~/.lgcw/toolchains/`.
+Select it for a shell with:
+
+```bash
+export PATH="$HOME/.lgcw/toolchains/node-24.20.0-darwin-arm64/bin:$PATH"
+```
+
+## Run, inspect and resume
+
+Run from this checkout, or pass `--root /path/to/lg-code-workflow` before the command. Replace N
+with an owner-created issue number; R1's [prepared issue](docs/requests/r1-proxy-addr-issue.md)
+remains Alex's action under the prototype decision.
+
+```bash
+uv run lgcw doctor --repo bodegus/family-calendar
+uv run lgcw run bodegus/family-calendar#N
+uv run lgcw report bodegus/family-calendar#N
+```
+
+Exit codes: 0 merge-ready/success; 2 waiting (including an already-active local run); 3 blocked or
+closed; 1 error. A waiting run has a question on its PR or issue. The allowed owner can answer
+`/lgcw answer ...`, `/lgcw retry` or `/lgcw abort`; then rerun the same `run` command.
+Report reads local evidence and starts no agents or GitHub clients. `LGCW_HOME` selects a different
+state directory and dedicated Codex home. Local state is never committed.
+
+## Qualification
+
+`make check` runs the isolated unit lane. `make live` opts into real services; the R1 smoke also
+requires explicit issue selection and can spend Codex tokens:
+
+```bash
+LGCW_LIVE=1 LGCW_SMOKE_ISSUE=bodegus/family-calendar#N \
+  uv run pytest -m live tests/live/test_smoke_e2e.py -s
+```
+
+The smoke launches the actual CLI, records its PR facts, kills its verified owned process tree
+in ci_wait, and resumes to merge-ready with green required CI. It retains an interruption receipt
+and refuses to repeat an uncertain kill. Receipts, usage and the report remain under
+`~/.lgcw/runs/bodegus__family-calendar__N/`. A missing issue selection is reported as not run.
