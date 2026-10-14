@@ -101,3 +101,102 @@ async def test_native_force_lease_rejects_stale_head(tmp_path: Path) -> None:
     )
     assert result.code != 0 and "stale info" in result.err
     assert await checked(remote.bare, "rev-parse", branch) == owner_head
+
+
+@pytest.mark.unit
+async def test_success_kills_background_process_group(tmp_path: Path) -> None:
+    from lgcw.git.run import run_process
+
+    result = await run_process(
+        ("/bin/sh", "-c", "(sleep 0.3; touch escaped) >/dev/null 2>&1 & exit 0"), cwd=tmp_path
+    )
+    assert result.code == 0
+    await asyncio.sleep(0.5)
+    assert not (tmp_path / "escaped").exists()
+
+
+@pytest.mark.unit
+async def test_timeout_does_not_wait_on_escaped_child_pipe(tmp_path: Path) -> None:
+    import os
+    import signal
+    import sys
+
+    from lgcw.git.run import run_process
+
+    # The child leaves the process group and retains stdout. Parent group kill cannot close
+    # that pipe; the runner must bound capture draining independently. Cleanup owns the PID.
+    code = (
+        "import os,time; pid=os.fork(); "
+        "os.setsid() if pid == 0 else None; "
+        "open('child.pid','w').write(str(os.getpid())) if pid == 0 else None; "
+        "time.sleep(10)"
+    )
+    try:
+        async with asyncio.timeout(2):
+            result = await run_process((sys.executable, "-c", code), cwd=tmp_path, timeout_s=0.2)
+        assert result.code == 124
+    finally:
+        pid_file = tmp_path / "child.pid"
+        if pid_file.exists():
+            try:
+                os.kill(int(pid_file.read_text()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+@pytest.mark.unit
+async def test_large_output_capture_is_bounded_head_and_tail(tmp_path: Path) -> None:
+    import sys
+
+    from lgcw.git.run import run_process
+
+    script = (
+        "import os; os.write(1,b'HEAD-OUT\\n'); os.write(2,b'HEAD-ERR\\n'); "
+        "chunk=b'x'*1048576; [(os.write(1,chunk),os.write(2,chunk)) for _ in range(32)]; "
+        "os.write(1,b'\\nTAIL-OUT'); os.write(2,b'\\nTAIL-ERR')"
+    )
+    result = await run_process((sys.executable, "-c", script), cwd=tmp_path, timeout_s=30)
+    assert result.code == 0
+    assert len(result.out.encode()) <= 65536 and len(result.err.encode()) <= 65536
+    assert result.out.startswith("HEAD-OUT") and result.out.endswith("TAIL-OUT")
+    assert result.err.startswith("HEAD-ERR") and result.err.endswith("TAIL-ERR")
+    assert "capture truncated" in result.out and "capture truncated" in result.err
+
+
+@pytest.mark.unit
+async def test_capture_redacts_credentials_before_clipping_windows(tmp_path: Path) -> None:
+    import sys
+
+    from lgcw.git.run import run_process
+
+    secret = "private-capture-seed-" + "Q" * 48
+    auth = PushAuth(token=SecretStr(secret))
+    script = (
+        "import os,base64; "
+        "token=base64.b64decode(os.environ['GIT_CONFIG_VALUE_0'].split()[-1]).split(b':',1)[1]; "
+        "os.write(1,b'x'*32700+b'\\n'+token+b'\\n'+b'y'*200000+b'\\n'+token+b'\\n'+b'z'*32700)"
+    )
+    result = await run_process((sys.executable, "-c", script), cwd=tmp_path, env=auth.env())
+    assert result.code == 0 and len(result.out.encode()) <= 65536
+    assert (
+        secret not in result.out
+        and secret[:20] not in result.out
+        and secret[-20:] not in result.out
+    )
+    assert "[REDACTED]" in result.out
+
+
+@pytest.mark.unit
+async def test_capture_limit_also_bounds_redaction_expansion(tmp_path: Path) -> None:
+    import sys
+
+    from lgcw.git.run import run_process
+
+    result = await run_process(
+        (sys.executable, "-c", "import os; os.write(1, os.environ['CAPTURE_FIXTURE'].encode())"),
+        cwd=tmp_path,
+        env={"CAPTURE_FIXTURE": "HEAD\n" + "authorization:x\n" * 3000 + "TAIL"},
+    )
+    assert result.code == 0 and len(result.out.encode()) <= 65536
+    assert result.out.startswith("HEAD") and result.out.endswith("TAIL")
+    assert "capture truncated" in result.out

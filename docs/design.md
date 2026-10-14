@@ -179,8 +179,11 @@ response was lost is recovered through `list_pr_reviews`, including reviews with
 findings; its body carries the round marker in the original submission (D-020). That marker can
 have a null review ID until GitHub assigns it; the enclosing review receipt provides the actual
 ID without a second event. The builder's Codex thread id is in the `session` marker, so a rerun
-resumes the same thread. These are integration requirements, not qualification of the currently
-implemented pure ledger; D-019 records the remaining pre-publication persistence gaps.
+resumes the same thread. T14 closes the pre-publication gaps with build/gate/publish intent and completion journals
+(D-035). Unknown paid or host-command results ask for an explicit new owner operation rather
+than replaying. Builder handoffs and gate receipts bind actual content; publication independently
+audits immutable committed bytes before pushing. The PR body carries an atomic operation receipt.
+Review/CI integration and real end-to-end qualification remain subsequent tasks.
 
 ## 4. Steps
 
@@ -221,12 +224,32 @@ Step details:
 - **build.** See §5. A `blocked` or `partial` handoff with open questions → `ask`. An empty diff
   on `done` counts as a gate failure ("no changes").
 - **gate.** Protected paths (config `protected_globs`, default `.github/workflows/**`) changed
-  without the issue mentioning them → `ask`. Gate commands run on the host in the clone with a
+  without explicit `lgcw-allow: <path>` lines in the frozen issue → `ask`. Each line names one
+  exact relative path in a standalone paragraph outside HTML comments, script/pre blocks and
+  Markdown code fences. Line breaks are LF/CR/CRLF only; other Unicode separators are prose. Ordinary mentions,
+  denial sentences and hidden text never pre-authorize paths. Any raw line starting with optional
+  spaces/tabs then < disables pre-authorization for the whole issue body; protected changes
+  always ask in that case (D-035 R4). The question carries exact paths
+  and a content fingerprint; only its authenticated `answer approve` acknowledges that proposal.
+  Only the latest answered protected-path question counts; a later denial revokes an earlier
+  approval even if old bytes return. A later allowed-author command also revokes an already
+  acknowledged approval; check after a long gate and immediately before push. Abort is terminal.
+  The acknowledgement route must match the question. An approved proposal matching its receipt
+  proceeds directly to gate without another paid turn only before any gate result exists. Content changes re-ask (D-035 R2).
+  Gate commands run on the host in the clone with a
   timeout; failure → feedback to `build` with the trimmed output (max `gate_fix_rounds`, default
-  2). The same failure fingerprint twice → fresh builder once (§6), then `ask`.
+  2). The same failure fingerprint twice → fresh builder once (§6), then `ask`. Before every
+  command, including a retry after an unknown result, content must match the builder receipt. Commands must leave identical content;
+  zero exit with altered content records blocking feedback. An unknown command result asks.
+  Existing gate results consume restored owner commands before routing; repeated graph states or
+  GraphRecursionError produce a recoverable node_error ask. Explicit owner retry authorizes a
+  new command operation (D-035 R3).
 - **publish.** `git add -A`, commit (message `lgcw: <first summary line> (#<n>)` plus trailers),
   push with `--force-with-lease=<branch>:<last pushed sha>`, render the PR body, write the `push`
-  marker. After a review fix: reply to each finding thread with the builder's disposition and fix
+  marker. Before push, an independent checkout of the immutable candidate must match the gate's
+  byte/mode/path fingerprint; changed work or foreign heads ask. Commit trailers and exact remote
+  SHA recover lost commit/push responses, and the body has an atomic operation receipt (D-035).
+  After a review fix: reply to each finding thread with the builder's disposition and fix
   SHA, then resolve it with the matching reason.
 - **ci_wait.** §8. Never waits on a SHA the workflow did not push.
 - **review.** §7. Runs only after CI is green or "moved on", so no review is spent on code a CI fix
@@ -298,6 +321,39 @@ Step details:
   the reviewer packet. The reviewer gets approach, decisions, assumptions, risks, not-done, file
   reading order and acceptance evidence pointers, but not the builder's summary prose, self-grades
   or test claims (it gets the gate and CI results instead).
+
+### 6.1 Owner retry grants
+
+The PR question and acknowledged command bind each continuation; retry does not waive all limits.
+The exhaustive code table is `graph/retry.py`:
+
+| Ask code | Continuation |
+|---|---|
+| build_unknown, harness_auth, harness_quota, harness_error, node_error | Resume one explicitly authorized turn; preserve pending failure evidence. |
+| handoff_incomplete | Resume with current clarification; owner feedback is not persisted as pending failure evidence. |
+| protected_path | Exact bound approval of unchanged builder bytes goes directly to gate; denial or changed bytes cannot use an older approval. |
+| gate_fix_limit, no_changes | One additional resumed fix; do not force a competing fresh-restart question. |
+| builder_restart_limit | One fresh builder for the acknowledged continuation; not a reusable global waiver. |
+| harness_session_lost | One fresh session seeded with the handoff and latest owner answer. |
+| workspace_changed | New build on preserved work; after commit, retry instead uses the journaled restoration below. |
+| build_evidence_missing | New build with verified input and new receipt. |
+| local_head_changed | Owner must inspect/preserve/restore the foreign local commit; never overwrite it automatically. |
+| handoff_too_large | Inspect retained local output, narrow or abort; never repeat a paid turn for that known result. |
+
+After a post-commit content question, retry freezes the observed content and restoration target
+in the PR. Candidate and dirty tracked work are preserved under local recovery refs. Restore a
+candidate matching the gate, or restore its published parent and rebuild a rejected candidate.
+Untracked files and foreign commits are refused. Unknown reset responses recover the exact clean
+target without resetting again. See D-035 R1.
+
+The selected session's successful handoff history determines prompt kind. Until a session has
+completed a validated handoff, retries reuse its original build/restart prompt with the full
+issue (and handoff for a restart). A fresh session marker without a dispatch is reused and does
+not consume a session-loss grant. Initial-build retries and owner/rebuild continuations remain
+source=build; known auth/quota/session-loss errors do not consume gate-fix allowance. Genuine
+gate/no-change intents and unknown results remain bounded. Owner answers are reconstructed from
+the current authenticated command, never persisted as pending feedback; all prompt kinds apply
+the same trusted owner-instruction suffix while keeping any evidence copy fenced.
 
 ## 7. Review levels and finding rules
 

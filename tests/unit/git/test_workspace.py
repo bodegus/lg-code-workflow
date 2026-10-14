@@ -342,3 +342,145 @@ async def test_local_clone_without_remote_branch_is_not_resumed(tmp_path: Path) 
     workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
     await workspace.prepare(policy(), ISSUE, BRANCH)
     assert not (await workspace.prepare(policy(), ISSUE, BRANCH)).resumed
+
+
+@pytest.mark.unit
+async def test_worktree_fingerprint_binds_bytes_and_survives_commit(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "state", origin=remote.bare)
+    info = await workspace.prepare(
+        policy(), IssueRef(repo="fixture/sandbox", number=7), "lgcw/issue-7"
+    )
+    (info.repo_dir / "app.py").write_text("VERSION = '0.1.1'\n")
+    before = await workspace.worktree_fingerprint(remote.base)
+    (info.repo_dir / "app.py").write_text("VERSION = '0.1.2'\n")
+    changed = await workspace.worktree_fingerprint(remote.base)
+    assert before != changed
+    (info.repo_dir / "new.txt").write_text("new\n")
+    untracked = await workspace.worktree_fingerprint(remote.base)
+    await workspace.commit_all("fixture", {})
+    assert await workspace.worktree_fingerprint(remote.base) == untracked
+    assert await workspace.commit_fingerprint(remote.base, await workspace.head_sha()) == untracked
+
+
+@pytest.mark.unit
+async def test_redacted_machine_path_cannot_bypass_symlink_guard(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "state", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("public synthetic fixture\n")
+    name = "ghp_" + "x" * 36 + ".py"
+    (info.repo_dir / name).symlink_to(outside)
+    with pytest.raises(ValueError, match="redacted|symlink"):
+        await workspace.changed_paths(remote.base)
+
+
+@pytest.mark.unit
+async def test_gate_failure_fingerprint_ignores_volatile_paths_and_times(tmp_path: Path) -> None:
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "state", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    error = info.repo_dir / "gate-error.txt"
+    error.write_text("AssertionError at /tmp/attempt-123: failed in 1.23 seconds\n")
+    first = await workspace.run_commands(
+        info.repo_dir, ("cat gate-error.txt; exit 1",), 5, tmp_path / "first.log"
+    )
+    error.write_text("AssertionError at /tmp/attempt-456: failed in 2.34 seconds\n")
+    second = await workspace.run_commands(
+        info.repo_dir, ("cat gate-error.txt; exit 1",), 5, tmp_path / "second.log"
+    )
+    assert first.fingerprint == second.fingerprint
+    error.write_text("TypeError: a genuinely different failure\n")
+    different = await workspace.run_commands(
+        info.repo_dir, ("cat gate-error.txt; exit 1",), 5, tmp_path / "different.log"
+    )
+    assert first.fingerprint != different.fingerprint
+
+
+def install_push_race(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, commands: str) -> None:
+    """Intercept the external git executable only at the process port's push boundary."""
+    import os
+    import shlex
+    import shutil
+
+    binary = shutil.which("git")
+    assert binary is not None
+    directory = tmp_path / "race-bin"
+    directory.mkdir()
+    wrapper = directory / "git"
+    wrapper.write_text(
+        '#!/bin/sh\nfor arg in "$@"; do\nif [ "$arg" = push ]; then\n'
+        + commands
+        + "\nbreak\nfi\ndone\nexec "
+        + shlex.quote(binary)
+        + ' "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("PATH", str(directory) + os.pathsep + os.environ["PATH"])
+
+
+@pytest.mark.unit
+async def test_lease_rejects_remote_moved_after_precheck_before_push(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shlex
+    import shutil
+
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    await workspace.prepare(policy(), ISSUE, BRANCH)
+    initial = await workspace.commit_empty("initial")
+    await workspace.push(BRANCH, None, AUTH)
+    await checked(remote.seed, "fetch", "origin", BRANCH)
+    await checked(remote.seed, "checkout", "-b", BRANCH, "FETCH_HEAD")
+    (remote.seed / "owner.txt").write_text("human commit\n")
+    await checked(remote.seed, "add", "-A")
+    await checked(remote.seed, "commit", "-m", "human")
+    human = await checked(remote.seed, "rev-parse", "HEAD")
+    await checked(remote.seed, "push", "origin", f"{human}:refs/heads/race-object")
+    await workspace.commit_empty("builder")
+    binary = shutil.which("git")
+    assert binary is not None
+    command = " ".join(
+        shlex.quote(word)
+        for word in (binary, "-C", str(remote.bare), "update-ref", "refs/heads/" + BRANCH, human)
+    )
+    install_push_race(tmp_path, monkeypatch, command)
+    with pytest.raises(PushRejectedError):
+        await workspace.push(BRANCH, initial, AUTH)
+    assert await checked(remote.bare, "rev-parse", BRANCH) == human
+
+
+@pytest.mark.unit
+async def test_push_uses_audited_commit_when_local_head_changes_before_exec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shlex
+    import shutil
+
+    remote = await origin(tmp_path)
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    info = await workspace.prepare(policy(), ISSUE, BRANCH)
+    initial = await workspace.commit_empty("initial")
+    await workspace.push(BRANCH, None, AUTH)
+    (info.repo_dir / "app.py").write_text("VERSION = '0.1.1'\n")
+    audited = await workspace.commit_all("audited", {})
+    assert audited is not None
+    (info.repo_dir / "app.py").write_text("VERSION = 'not-audited'\n")
+    other = await workspace.commit_all("foreign local commit", {})
+    assert other is not None
+    await checked(info.repo_dir, "reset", "--hard", audited)
+    binary = shutil.which("git")
+    assert binary is not None
+    command = (
+        " ".join(
+            shlex.quote(word)
+            for word in (binary, "-C", str(info.repo_dir), "reset", "--hard", other)
+        )
+        + " >/dev/null"
+    )
+    install_push_race(tmp_path, monkeypatch, command)
+    assert await workspace.push(BRANCH, initial, AUTH) == audited
+    assert await checked(remote.bare, "rev-parse", BRANCH) == audited
+    assert await workspace.head_sha() == other

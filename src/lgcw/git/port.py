@@ -69,6 +69,10 @@ class WorkspacePort(Protocol):
         """Read the local committed head for publish recovery without making another commit."""
         ...
 
+    async def commit_parents(self, head_sha: str) -> tuple[str, ...]:
+        """Read the complete immutable parent list of one commit."""
+        ...
+
     async def commit_message(self, sha: str) -> str:
         """Read an operation trailer for commit-before-receipt recovery."""
         ...
@@ -87,6 +91,20 @@ class WorkspacePort(Protocol):
         """Return all changed paths including untracked files."""
         ...
 
+    async def worktree_fingerprint(self, base_sha: str) -> str:
+        """Bind actual changed file bytes/modes to a base, stable before and after commit."""
+        ...
+
+    async def commit_fingerprint(self, base_sha: str, head_sha: str) -> str:
+        """Bind immutable committed bytes/modes to the measured gate's base."""
+        ...
+
+    async def restore_owned_commit(
+        self, expected_head: str, target_head: str, operation: str, parent_sha: str
+    ) -> str:
+        """Preserve the owned commit/work snapshot and restore its candidate or parent."""
+        ...
+
     async def commit_all(self, message: str, trailers: Mapping[str, str]) -> str | None:
         """Commit all changed files, returning None when clean."""
         ...
@@ -95,7 +113,14 @@ class WorkspacePort(Protocol):
         """Create the initial empty checkpoint without running repository hooks."""
         ...
 
-    async def push(self, branch: str, expected_remote_sha: str | None, auth: PushAuth) -> str:
+    async def push(
+        self,
+        branch: str,
+        expected_remote_sha: str | None,
+        auth: PushAuth,
+        *,
+        head_sha: str | None = None,
+    ) -> str:
         """Push only the owned branch using an explicit full-ref lease."""
         ...
 

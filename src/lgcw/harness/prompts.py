@@ -115,6 +115,7 @@ def render_restart_turn(
     handoff: BuildHandoff | None,
     open_findings: Sequence[GatedFinding],
     feedback: Feedback | None,
+    owner_answer: str | None = None,
 ) -> TurnInput:
     """Seed a fresh builder using all durable context without requiring old conversation history."""
     return _turn(
@@ -126,7 +127,9 @@ def render_restart_turn(
             "previous_handoff": handoff.model_dump(mode="json") if handoff else None,
             "open_findings": [item.model_dump(mode="json") for item in open_findings],
             "feedback": feedback.model_dump(mode="json") if feedback else None,
+            "owner_answer": owner_answer,
         },
+        owner_answer,
     )
 
 

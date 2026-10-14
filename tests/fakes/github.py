@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from lgcw.clock import Clock
@@ -48,6 +48,7 @@ class FakeGitHub(GitHubPort):
         self._failures: dict[str, tuple[int, BaseException]] = {}
         self._timelines: dict[str, list[tuple[float, list[RunView], list[JobView]]]] = {}
         self._timeline_starts: dict[str, datetime] = {}
+        self.after_comment: Callable[[IssueComment], None] | None = None
         self._next_pr = 100
         self._next_comment = 1
         self._next_review = 1
@@ -132,6 +133,8 @@ class FakeGitHub(GitHubPort):
             id=self._comment_id(), author=self.login, body=body, created_at=self.clock.now()
         )
         self.comments.setdefault(key, []).append(comment)
+        if self.after_comment is not None:
+            self.after_comment(comment)
         self._finish("create_issue_comment")
         return comment
 

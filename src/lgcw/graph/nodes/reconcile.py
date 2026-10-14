@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from langgraph.runtime import Runtime
@@ -20,6 +21,18 @@ from lgcw.models.ledger import (
     RunMarker,
 )
 from lgcw.models.state import RunState
+
+
+def latest_owner_answer(run: RunMarker | None, acks: Sequence[AckMarker]) -> str | None:
+    """Prefer the latest authenticated answer over an earlier bootstrap clarification."""
+    return next(
+        (
+            ack.command_snapshot.text
+            for ack in reversed(acks)
+            if ack.verb == "answer" and ack.command_snapshot is not None
+        ),
+        run.owner_answer if run else None,
+    )
 
 
 async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
@@ -41,18 +54,9 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
     if original is None and intake_entry and isinstance(intake_entry.marker, IntakeMarker):
         original, criteria = intake_entry.marker.snapshot, intake_entry.marker.criteria
     acks = [entry for entry in obs.ledger.of_kind("ack") if isinstance(entry.marker, AckMarker)]
-    answer = run.owner_answer if run else None
-    if answer is None:
-        answer = next(
-            (
-                entry.marker.command_snapshot.text
-                for entry in reversed(acks)
-                if isinstance(entry.marker, AckMarker)
-                and entry.marker.verb == "answer"
-                and entry.marker.command_snapshot is not None
-            ),
-            None,
-        )
+    answer = latest_owner_answer(
+        run, [entry.marker for entry in acks if isinstance(entry.marker, AckMarker)]
+    )
     fields: dict[str, Any] = dict(
         pr=pr,
         ledger=obs.ledger,

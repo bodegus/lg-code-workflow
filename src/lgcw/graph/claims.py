@@ -1,0 +1,159 @@
+"""Pure checks of builder claims and bounded fresh-thread selection."""
+
+from __future__ import annotations
+
+import fnmatch
+import hashlib
+import re
+from collections.abc import Mapping, Sequence
+
+from lgcw.models.approval import ApprovalRevocation, ProtectedApproval
+from lgcw.models.base import Strict
+from lgcw.models.config import RepoConfig
+from lgcw.models.handoff import BuildHandoff
+from lgcw.models.harness import Usage
+from lgcw.models.state import Feedback, PendingAsk
+
+
+class ClaimsResult(Strict):
+    """An independently checked result, never the builder's self-assessment."""
+
+    ok: bool
+    feedback: Feedback | None
+    ask: PendingAsk | None
+    revocation: ApprovalRevocation | None = None
+
+
+def explicit_allowed_paths(body: str) -> set[str]:
+    """Read standalone allow paragraphs using CommonMark line and fence boundaries."""
+    if any(re.match(r"[ \t]*<", line) for line in re.split(r"\r\n|\r|\n", body)):
+        return set()
+
+    def hide(match: re.Match[str]) -> str:
+        return re.sub(r"[^\r\n]", " ", match[0])
+
+    visible = re.sub(r"<!--[\s\S]*?(?:-->|$)", hide, body)
+    visible = re.sub(r"<(script|pre)\b[^>]*>[\s\S]*?(?:</\1[ \t]*>|$)", hide, visible, flags=re.I)
+    lines = re.split(r"\r\n|\r|\n", visible)
+    candidates: dict[int, str] = {}
+    fence_char, fence_length = "", 0
+    for index, line in enumerate(lines):
+        if fence_char:
+            if re.fullmatch(
+                r" {0,3}" + re.escape(fence_char) + "{" + str(fence_length) + r",}[ \t]*", line
+            ):
+                fence_char, fence_length = "", 0
+            continue
+        opening = re.match(r" {0,3}(`{3,}|~{3,})", line)
+        if opening:
+            fence_char, fence_length = opening[1][0], len(opening[1])
+            continue
+        match = re.fullmatch(r"lgcw-allow: ([A-Za-z0-9_.@/+\-]+)", line)
+        if match:
+            candidates[index] = match[1]
+    allowed: set[str] = set()
+    for start in candidates:
+        if start - 1 in candidates:
+            continue
+        end = start
+        while end + 1 in candidates:
+            end += 1
+        before = start == 0 or re.fullmatch(r"[ \t]*", lines[start - 1]) is not None
+        after = end == len(lines) - 1 or re.fullmatch(r"[ \t]*", lines[end + 1]) is not None
+        if before and after:
+            allowed.update(candidates[index] for index in range(start, end + 1))
+    return allowed
+
+
+def check_claims(
+    handoff: BuildHandoff,
+    changed: Sequence[str],
+    repo: RepoConfig,
+    issue_body: str,
+    *,
+    tree_fingerprint: str | None = None,
+    approval: ProtectedApproval | None = None,
+) -> ClaimsResult:
+    """Check completion, actual changed paths and explicit protected-path scope."""
+    if handoff.status != "done":
+        questions = (
+            "; ".join(handoff.open_questions or handoff.not_done) or "clarify remaining scope"
+        )
+        return ClaimsResult(
+            ok=False,
+            feedback=None,
+            ask=PendingAsk(
+                code="handoff_incomplete",
+                question=f"Builder returned {handoff.status}: {questions}",
+                return_to="build",
+            ),
+        )
+    tokens = explicit_allowed_paths(issue_body)
+    protected = [
+        path
+        for path in changed
+        if any(fnmatch.fnmatchcase(path, pattern) for pattern in repo.protected_globs)
+        and path not in tokens
+    ]
+    protected = sorted(set(protected))
+    authorized = (
+        approval is not None
+        and tree_fingerprint is not None
+        and approval.paths == tuple(protected)
+        and approval.tree_fingerprint == tree_fingerprint
+    )
+    if protected and not authorized:
+        return ClaimsResult(
+            ok=False,
+            feedback=None,
+            ask=PendingAsk(
+                code="protected_path",
+                question="Protected paths need explicit lgcw-allow lines in the issue: "
+                + ", ".join(protected)
+                + "; proposed content fingerprint: "
+                + (tree_fingerprint or "unavailable")
+                + ". Only /lgcw answer approve approves this exact proposal; "
+                "other answers do not grant protected-path permission.",
+                return_to="build",
+                protected_paths=tuple(protected),
+                tree_fingerprint=tree_fingerprint,
+            ),
+        )
+    claimed = {note.path for note in handoff.files}
+    code = "no_changes" if not changed else "claims_mismatch" if claimed != set(changed) else None
+    if code is not None:
+        summary = (
+            "Builder claimed done but made no changes."
+            if code == "no_changes"
+            else "Handoff file paths do not match the independently observed git diff."
+        )
+        return ClaimsResult(
+            ok=False,
+            ask=None,
+            feedback=Feedback(
+                source="no_changes" if code == "no_changes" else "gate",
+                summary=summary,
+                data=f"actual paths: {sorted(set(changed))}; claimed paths: {sorted(claimed)}",
+                fingerprint=hashlib.sha256(code.encode()).hexdigest()[:16],
+            ),
+        )
+    return ClaimsResult(ok=True, feedback=None, ask=None)
+
+
+def should_restart_builder(
+    usage: Usage | None,
+    fingerprints: Sequence[str],
+    restarts_by_cause: Mapping[str, int],
+    ratio: float,
+) -> str | None:
+    """Select an unused restart cause from repeated evidence or measured context occupancy."""
+    cause: str | None = None
+    if len(fingerprints) >= 2 and fingerprints[-1] == fingerprints[-2]:
+        cause = "failure:" + fingerprints[-1]
+    elif usage is not None and usage.context_window is not None:
+        context = usage.context_input_tokens
+        if context is None:  # legacy/fake Usage records before D-034
+            context = usage.input_tokens
+        if context > ratio * usage.context_window:
+            cause = "context"
+    return cause if cause is not None and restarts_by_cause.get(cause, 0) == 0 else None

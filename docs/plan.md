@@ -488,13 +488,31 @@ this task. The default graph still refuses missing T14–T16 nodes.
 - Create: `tests/unit/graph/test_claims.py`, `tests/graph/test_build_gate_publish.py`
 
 **Interfaces:**
-- Produces: `check_claims(handoff: BuildHandoff, changed: Sequence[str], repo: RepoConfig, issue_body: str) -> ClaimsResult(ok: bool, feedback: Feedback | None, ask: PendingAsk | None)` (empty diff on `done` → `no_changes`; protected path not mentioned in the issue → ask); `should_restart_builder(usage: Usage | None, fingerprints: Sequence[str], restarts_by_cause: Mapping[str, int], ratio: float) -> str | None` (returns the cause or None).
+- Produces: `check_claims(handoff: BuildHandoff, changed: Sequence[str], repo: RepoConfig, issue_body: str) -> ClaimsResult(ok: bool, feedback: Feedback | None, ask: PendingAsk | None)` (empty diff on `done` → `no_changes`; protected path without an explicit `lgcw-allow: <path>` line outside HTML comments/code fences → ask); `should_restart_builder(usage: Usage | None, fingerprints: Sequence[str], restarts_by_cause: Mapping[str, int], ratio: float) -> str | None` (returns the cause or None).
 
-- [ ] **Step 1: Write the failing tests**: `test_happy_build_gate_publish` (one `session` marker, one `push` with source `build`, PR body contains the handoff approach, commit trailers present), `test_gate_failure_then_fix` (second turn's text contains the gate tail and every criterion), `test_same_gate_failure_twice_restarts_then_asks`, `test_no_changes_counts_as_failure`, `test_protected_path_asks`, `test_handoff_blocked_asks_with_question`, `test_auth_error_asks_without_push`, `test_context_ratio_restarts_builder` (FakeHarness usage 0.7 × window before a fix round → new `session` marker with reason `fresh_restart`), `test_publish_once_across_crash` (crash after push before marker → rerun finds the remote head and writes one marker).
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `make check` → PASS.
-- [ ] **Step 5: Commit** `feat(graph): build, gate and publish`.
+R1 extends `check_claims` with optional content fingerprint / structured protected approval,
+and WorkspacePort with owned restoration and an optional immutable push SHA (D-035 R1).
+
+R2 requires explicit allow lines (one exact relative path per line, outside HTML comments and
+Markdown code fences). Ordinary mentions/denials never authorize. Only the latest answered
+protected-path question can approve its exact paths/content; a later denial revokes prior approval.
+An unchanged approved proposal resumes at gate with zero additional paid turns.
+
+- [x] **Step 1: Write the failing tests**: `test_happy_build_gate_publish` (one `session` marker, one `push` with source `build`, PR body contains the handoff approach, commit trailers present), `test_gate_failure_then_fix` (second turn's text contains the gate tail and every criterion), `test_same_gate_failure_twice_restarts_then_asks`, `test_no_changes_counts_as_failure`, `test_protected_path_asks`, `test_handoff_blocked_asks_with_question`, `test_auth_error_asks_without_push`, `test_context_ratio_restarts_builder` (FakeHarness usage 0.7 × window before a fix round → new `session` marker with reason `fresh_restart`), `test_publish_once_across_crash` (crash after push before marker → rerun finds the remote head and writes one marker).
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `make check` → PASS.
+- [x] **Step 5: Commit** `feat(graph): build, gate and publish`.
+
+T14 R3 qualification:801 unit tests,2 live deselected,96.00% coverage;13/13 guard removals
+caught with isolated basetemp directories. Approval/gate crash recovery, no-progress owner ask,
+later command revocation before continuation/after gate/before push, CommonMark scope, and
+restored-parent rebuild prompt are proved in docs/validation/2026-10-14-t14-r3.md. D-035 R3
+records the accepted creator/editor residual and optional carry to T17.
+
+T14 R4 sole security blocker: two-line whole-body HTML refusal,34 focused cases and5/5
+guard removals caught; full835 units/2 live deselected/96.06%. Transcript in
+docs/validation/2026-10-14-t14-r4.md. V-NEW/V-P3 findings carry to the T16 backlog.
 
 ### Task T15: Node — ci_wait
 
@@ -527,6 +545,11 @@ this task. The default graph still refuses missing T14–T16 nodes.
 - [ ] **Step 5: Commit** `feat(graph): review loop and merge-ready`.
 
 ### Task T17: CLI, doctor, target repo configs, live smoke
+
+T14 R3 optional carry, to qualify before the T17 full execution: R3-F6 unused session-loss grant
+accounting; R3-F7 approved claim mismatch feedback/charged gate fix; R3-F8 changed receipt bytes
+ask workspace_changed directly; R3-F9 embedded sk-ant/sk-admin redaction and long task-* names.
+Required R3-F1–F5 remain in T14.
 
 **Files:**
 - Create: `src/lgcw/cli.py`, `src/lgcw/doctor.py`, `config/repos/bodegus__family-calendar.toml`, `config/repos/bodegus__memgo-app.toml`

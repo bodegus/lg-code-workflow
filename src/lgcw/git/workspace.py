@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import shutil
+import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -11,10 +14,10 @@ from uuid import uuid4
 
 from pydantic import SecretStr
 
+from lgcw.ci.logs import failure_fingerprint
 from lgcw.git.port import CommandResult, PushAuth, PushRejectedError, WorkspaceInfo, WorkspacePort
 from lgcw.git.run import git, run_process
 from lgcw.github.port import TokenProvider
-from lgcw.ledger.markers import fingerprint
 from lgcw.live import require_live
 from lgcw.models.config import RepoConfig
 from lgcw.models.issue import IssueRef
@@ -32,6 +35,26 @@ def _instruction(path: str) -> bool:
     return any(part in {".agents", ".claude", ".codex"} for part in parts) or (
         parts[-1] in {"agents.md", "agents.override.md", "claude.md"}
     )
+
+
+def _file_fingerprint(root: Path, base_sha: str, paths: Sequence[str]) -> str:
+    """Hash actual bytes/modes with the same representation for worktrees and audit clones."""
+    records: list[tuple[str, str, str]] = []
+    for name in sorted(paths):
+        path = root / name
+        if path.is_symlink():
+            mode, digest = "symlink", hashlib.sha256(str(path.readlink()).encode()).hexdigest()
+        elif path.is_file():
+            mode = "executable" if path.stat().st_mode & 0o111 else "file"
+            with path.open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        elif not path.exists():
+            mode, digest = "deleted", ""
+        else:
+            raise ValueError("changed path is not a regular file or symlink")
+        records.append((name, mode, digest))
+    payload = json.dumps([_sha(base_sha), records], separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 class GitWorkspace(WorkspacePort):
@@ -71,10 +94,15 @@ class GitWorkspace(WorkspacePort):
         result = await git(*args, cwd=cwd, env=env)
         if result.code:
             raise RuntimeError(f"git {args[0]} failed ({result.code}): {result.err}")
+        if result.capture_truncated:
+            raise ValueError("git output capture was truncated; incomplete metadata is refused")
         return result.out.rstrip("\n")
 
     async def _paths(self, cwd: Path, *args: str) -> tuple[str, ...]:
-        return tuple(path for path in (await self._checked(cwd, *args)).split("\0") if path)
+        data = await self._checked(cwd, *args)
+        if "[REDACTED]" in data:
+            raise ValueError("redacted Git machine paths are ambiguous; refusing filesystem access")
+        return tuple(path for path in data.split("\0") if path)
 
     async def _safe_links(self, cwd: Path) -> None:
         paths = await self._paths(
@@ -238,7 +266,7 @@ class GitWorkspace(WorkspacePort):
             command=redact(command),
             code=code,
             tail=tail,
-            fingerprint=fingerprint(command, tail) if code else None,
+            fingerprint=failure_fingerprint("local", "gate", command, tail) if code else None,
             duration_s=time.monotonic() - started,
             log_path=log_path,
         )
@@ -246,6 +274,15 @@ class GitWorkspace(WorkspacePort):
     async def head_sha(self) -> str:
         """Return the clone's committed head, including a commit made before a crash."""
         return await self._checked(self._prepared().repo_dir, "rev-parse", "HEAD")
+
+    async def commit_parents(self, head_sha: str) -> tuple[str, ...]:
+        """Read all parents through the hooks-off complete-metadata boundary."""
+        fields = (
+            await self._checked(
+                self._prepared().repo_dir, "rev-list", "--parents", "-n", "1", _sha(head_sha)
+            )
+        ).split()
+        return tuple(_sha(value) for value in fields[1:])
 
     async def commit_message(self, sha: str) -> str:
         """Read a committed message without hooks or external programs."""
@@ -274,6 +311,48 @@ class GitWorkspace(WorkspacePort):
         )
         untracked = await self._paths(cwd, "ls-files", "--others", "--exclude-standard", "-z")
         return tuple(dict.fromkeys((*changed, *untracked)))
+
+    async def worktree_fingerprint(self, base_sha: str) -> str:
+        """Hash actual changed bytes and executable/symlink modes, checking config first."""
+        info = self._prepared()
+        if self._repo is None:
+            raise ValueError("workspace policy missing")
+        url = (
+            str(self._origin)
+            if self._origin is not None
+            else (f"https://github.com/{self._repo.full_name}.git")
+        )
+        await self._trusted_config(info.repo_dir, url, self._repo, info.branch)
+        return _file_fingerprint(info.repo_dir, base_sha, await self.changed_paths(base_sha))
+
+    async def commit_fingerprint(self, base_sha: str, head_sha: str) -> str:
+        """Hash an immutable commit in a private audit clone, independent of live local edits."""
+        info = self._prepared()
+        await self.worktree_fingerprint(base_sha)  # validate original config and links first
+        with tempfile.TemporaryDirectory(prefix="commit-check-", dir=info.repo_dir.parent) as name:
+            audit = Path(name) / "repo"
+            await self._checked(
+                info.repo_dir.parent,
+                "clone",
+                "--shared",
+                "--no-checkout",
+                "--",
+                str(info.repo_dir),
+                str(audit),
+            )
+            await self._checked(audit, "checkout", "--detach", _sha(head_sha))
+            await self._safe_links(audit)
+            paths = await self._paths(
+                audit,
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                _sha(base_sha),
+                _sha(head_sha),
+                "--",
+            )
+            return _file_fingerprint(audit, base_sha, paths)
 
     async def _commit(self, message: str, *, empty: bool = False) -> str:
         cwd = self._prepared().repo_dir
@@ -316,7 +395,14 @@ class GitWorkspace(WorkspacePort):
             raise ValueError("empty checkpoint requires clean workspace")
         return await self._commit(message, empty=True)
 
-    async def push(self, branch: str, expected_remote_sha: str | None, auth: PushAuth) -> str:
+    async def push(
+        self,
+        branch: str,
+        expected_remote_sha: str | None,
+        auth: PushAuth,
+        *,
+        head_sha: str | None = None,
+    ) -> str:
         """Publish only the owned branch with the exact full-ref lease and no lost ancestry."""
         info = self._prepared()
         cwd = info.repo_dir
@@ -347,7 +433,12 @@ class GitWorkspace(WorkspacePort):
         remote_sha = observed.split()[0] if observed else None
         if remote_sha != expected_remote_sha:
             raise PushRejectedError("remote head differs from exact expected lease")
-        head = await self._checked(cwd, "rev-parse", "HEAD")
+        head = (
+            _sha(head_sha)
+            if head_sha is not None
+            else await self._checked(cwd, "rev-parse", "HEAD")
+        )
+        await self._checked(cwd, "cat-file", "-e", head + "^{commit}")
         if expected_remote_sha is not None:
             ancestor = await git(
                 "merge-base", "--is-ancestor", _sha(expected_remote_sha), head, cwd=cwd
@@ -359,7 +450,7 @@ class GitWorkspace(WorkspacePort):
                 "push",
                 f"--force-with-lease={ref}:{expected_remote_sha or ''}",
                 expected_url,
-                f"HEAD:{ref}",
+                f"{head}:{ref}",
                 cwd=cwd,
                 env=env,
             )
@@ -379,6 +470,56 @@ class GitWorkspace(WorkspacePort):
             "--",
         )
         return output.encode()[: max(0, max_bytes)].decode(errors="ignore")
+
+    async def _optional_ref(self, cwd: Path, ref: str) -> str | None:
+        result = await git("rev-parse", "--verify", ref, cwd=cwd)
+        if result.code == 0:
+            return result.out.strip()
+        if result.code in {1, 128}:
+            return None
+        raise ValueError("cannot inspect recovery ref")
+
+    async def restore_owned_commit(
+        self, expected_head: str, target_head: str, operation: str, parent_sha: str
+    ) -> str:
+        """Restore a journaled publication after explicit owner retry, preserving recovery refs."""
+        cwd = self._prepared().repo_dir
+        expected_head, target_head, parent_sha = (
+            _sha(expected_head),
+            _sha(target_head),
+            _sha(parent_sha),
+        )
+        if target_head not in {expected_head, parent_sha} or not re.fullmatch(
+            r"[a-f0-9]{16,64}", operation
+        ):
+            raise ValueError("restore target is outside the journaled publication")
+        head = await self.head_sha()
+        if head not in {expected_head, target_head}:
+            raise ValueError("restore refuses a foreign local commit")
+        message = await self.commit_message(expected_head)
+        if (
+            f"LGCW-Operation: {operation}" not in message.splitlines()
+            or f"LGCW-Parent: {parent_sha}" not in message.splitlines()
+            or await self.commit_parents(expected_head) != (parent_sha,)
+        ):
+            raise ValueError("restore candidate has no exact owned publication proof")
+        if await self._checked(cwd, "ls-files", "--others", "--exclude-standard", "-z"):
+            raise ValueError(
+                "restore refuses untracked files; owner must preserve/remove them first"
+            )
+        ref = "refs/lgcw/recovery/" + operation
+        existing = await self._optional_ref(cwd, ref)
+        if existing not in {None, expected_head}:
+            raise ValueError("restore recovery ref already belongs to another commit")
+        if existing is None:
+            await self._checked(cwd, "update-ref", ref, expected_head)
+        work_ref = ref + "-work-/" + await self.worktree_fingerprint(parent_sha)
+        if await self._optional_ref(cwd, work_ref) is None:
+            snapshot = await self._checked(cwd, "stash", "create")
+            if snapshot:
+                await self._checked(cwd, "update-ref", work_ref, _sha(snapshot))
+        await self._checked(cwd, "reset", "--hard", target_head)
+        return await self.head_sha()
 
     async def adopt_remote_head(self, branch: str) -> str:
         """Adopt a remotely changed owned branch only when the local clone is clean."""

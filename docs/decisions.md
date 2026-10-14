@@ -219,7 +219,8 @@ our own code. Research references point into [research/](research/).
 - **Ordering:** issue/PR facts retain service timestamps. The binding `ThreadComment` has no
   timestamp, so finding-thread facts use UTC minimum as an explicit unknown-time sentinel,
   ordered by comment ID. That sentinel is not evidence of when a finding occurred.
-- **Counts:** fix counts reflect published `push` source markers, reruns reflect `ci` actions,
+- **Counts (extended by D-035):** unpublished gate-fix intents now also count; other fix counts
+  reflect published `push` source markers, reruns reflect `ci` actions,
   review rounds reflect review markers, and fresh restarts reflect session markers. No local
   counter is persisted. Questions are pending only without a later matching acknowledgement.
 - **Integration limit to resolve before T12/T14:** these current markers do not record
@@ -762,3 +763,206 @@ our own code. Research references point into [research/](research/).
   current authority remains PID plus direct-parent/descendant ancestry, with the review's
   acknowledged millisecond PID-reuse caveat. No claim of protection against that race or of
   containment for reparented daemons; later container/cgroup isolation remains the stronger path.
+
+
+## D-035 — T14 execution journals and content-bound publication
+
+- **Status:** implemented in T14; covers D-019's pre-publication gaps. No new dependency.
+- **Paid dispatch:** a `build` intent records operation, parent, session, source and owner command
+  before a turn. Its completion contains the sanitized canonical handoff, measured usage and
+  actual content fingerprint. An intent without completion asks `build_unknown`; only a new
+  authenticated owner retry authorizes another paid operation. A session selected but never
+  materialized may get one fresh `session_lost` session; a busy turn is not a lost session.
+- **Startup failures:** dedicated-login/quota failures during session creation use the same
+  repair guidance as turn failures, with no build intent, paid turn or push. Session creation
+  errors are logged after the harness redaction boundary; a new graph regression failed first.
+- **Limits:** unpublished gate-fix attempts count distinct build intents in the PR ledger;
+  publication does not count the same attempt twice. Repeated normalized gate failures and
+  measured context occupancy select one fresh session per cause, then ask. Owner retry grants
+  are scoped to the pending limit. Local gate fixes retain CI/review publication provenance.
+- **Gate:** journal command intent before execution and exit/content/feedback after execution.
+  Unknown command completion asks, rather than replaying host commands. An explicit owner retry
+  gets a new operation. First gate entry checks bytes against the builder completion; commands
+  must leave the same content before/after. Exit zero with changed content is recorded truthfully
+  as zero plus blocking feedback, requiring another build and stable gate.
+- **Content evidence (D-034 R2-F4):** sorted changed paths include untracked files, deletions,
+  executable mode and symlink targets; framed SHA-256 hashes include the published parent.
+  Gate and publication compare actual bytes, not line counts. An independent temporary shared
+  audit clone checks out the immutable candidate commit and computes the same content hash
+  before push. Same-size edits after gate and edits during commit are rejected. A cancelled or
+  unknown paid turn has no usable completion; a prior completion cannot authorize altered bytes.
+  These checks do not claim global process containment or protection from later external writes.
+- **Git dependencies:** D-025 already selected thin git CLI integration. Hashing uses hashlib and
+  standard filesystem operations; auditing uses the same git adapter. No Git object decoder or
+  additional SDK is needed. Machine path output containing a redaction sentinel fails closed,
+  preventing a token-shaped filename from hiding a real symlink during path validation.
+- **Publication:** commit intent, exact operation/issue/parent trailers, committed receipt, leased
+  push, push receipt, canonical handoff body with atomic body-operation receipt, then completion.
+  A lost commit response recovers only matching trailers. A lost push response observes the exact
+  remote SHA. Reconciliation prioritizes incomplete owned publication before CI. A lost body
+  update response compares the actual body and avoids rewriting it. Foreign heads ask.
+- **Host command cleanup (review R2-X2):** stdout/stderr capture uses anonymous temporary files;
+  waiting is on the owned process, not pipe EOF. The owned process group is killed after normal
+  exit as well as timeout/cancellation, and reaping is bounded. An already escaped process group
+  is outside this containment, but cannot indefinitely hold pipe draining open. Real subprocess
+  regressions exercise both successful-parent/background-child and escaped-pipe cases.
+- **Evidence:** named T14 graph tests plus nine comment boundaries, commit/push/body response
+  loss, unknown paid/gate results with explicit retry, session-loss/context/failure caps,
+  provenance and same-path byte races. See the PR's actual command output. Unit checkpoints stop
+  at `ci_wait`; T15/T16 and a real end-to-end run remain unqualified by T14.
+
+
+### D-035 R1 protected approval and bounded recovery (review 6156345540)
+
+- **Protected paths (F1):** original issue pre-authorization requires exact relative-path tokens;
+  `docs/AGENTS.md.bak` cannot approve `AGENTS.md`. Owner prose is never added to that token set.
+  A protected-path question records its sorted exact paths and the current content fingerprint
+  (including parent). Only its authenticated `/lgcw answer approve` acknowledgement grants that
+  exact proposal. Changed content/path sets re-ask. Denial plus a non-compliant builder reproduced
+  an unauthorized push before the fix; now it re-asks without a new push.
+- **Gate retries (F2):** every gate entry checks bytes against the builder completion, including
+  explicit retry after an unknown command result. A hand edit after a command crash requires a
+  new build; the old handoff cannot authorize it.
+- **Service bounds (F3):** fit the PR body before publication effects, reserving room for its
+  compact receipt. That body RunMarker contains ids/hashes and no issue snapshot/criteria/answer;
+  the canonical run remains in authenticated conversation facts. Thin view receipts are not a
+  replacement for that canonical run. Oversized explanatory agent prose is visibly clipped while
+  retaining every machine identity and list item; full raw output remains in the local turn
+  artifact. If identities cannot fit, write a known HandoffTooLarge error receipt and ask for
+  inspection/narrowing/abort. Even explicit retry never pays for that known result again. Check
+  actual escaped marker size before posting the completion. Tests cover 28 KB issue + 36 KB
+  handoff, 59.2 KB handoff and an unfit identity list.
+- **Host output (F4):** capture at most 64 KiB per stream in the controller, retaining head/tail
+  and a truncation marker. Fixed-length positional reads use the file-size snapshot; no shared
+  writer offset is changed. Redact overlapping windows before clipping (overlap includes known
+  credential lengths), and also cap redaction expansion. Temporary on-disk output is not capped;
+  the command lifetime remains bounded. A 32 MiB stdout + 32 MiB stderr regression fails without
+  the cap; credential-at-clip and redaction-expansion regressions pass.
+- **Owner context (F5):** restart prompts carry the latest acknowledged owner answer in fenced
+  JSON, even when a bootstrap-era answer exists. No restart silently loses later clarification.
+- **Pending fixes (F6):** BuildMarker.pending_feedback survives an errored or unknown fix turn;
+  retry restates the exact gate failure until a fix completes. It is distinct from newly measured
+  claims feedback.
+- **Retry grants (F7/F8):** the code table in graph/retry.py and design §6.1 defines every
+  build-directed question. A gate/no-change limit retry grants one resumed fix without forcing a
+  competing restart question. A restart-limit retry grants one fresh builder for that continuation;
+  an unknown result's retry resumes rather than silently spending another fresh-session grant.
+  Session-loss retry grants one fresh builder seeded with the handoff; auto-recovery plus explicit
+  grants remain PR-derived. Known unusable session-loss attempts do not consume gate-fix rounds
+  (F11). Auth/quota session-creation failures use the same repair guidance as turn failures.
+- **Post-commit recovery (F9):** an explicit retry freezes the observed content and target in a
+  reset_intent receipt. Preserve the exact candidate under refs/lgcw/recovery/<operation> and
+  dirty tracked content under the sibling <operation>-work-/<content-hash> namespace. Restore
+  a gate-matching candidate, or restore its published parent and abandon the rejected candidate
+  for a new build. Refuse foreign local commits and untracked files. Backup refs are append-only;
+  repeated observation of an already-restored clean target does not reset again. Tests cover
+  lost commit/reset responses, both recovery choices, recoverable dirty bytes and foreign-commit
+  refusal. The owner question states the restoration action before retry authorizes it.
+- **Push identity/tests (F10/F12):** publication passes its audited immutable SHA into push; the
+  git refspec uses that SHA rather than HEAD. External executable-boundary races prove an owner
+  update between pre-check and git push is rejected, and a moving local HEAD cannot change the
+  published candidate. Replacing the exact lease with --force now fails the race regression.
+  The auth test makes edits before failure and asserts re-login guidance; the repeated-gate test
+  asserts the precise gate_fix_limit code, not either of two possible limits.
+- **Evidence:** actual failure reproductions, focused integration, full make check and killed
+  source-copy mutants are recorded in docs/validation/2026-10-13-t14-r1.md and the PR. No new
+  dependency or paid/live call is needed for these corrections; standard-library bounded I/O
+  and D-025's existing git adapter cover the added operations.
+
+
+### D-035 R2 approval revocation, original prompt recovery and exact ancestry
+
+- **Review:** PR #4 comment6157601488. Required F1–F6 and optional F7–F12 fixed in this append.
+- **Explicit authorization (F1/F2/F5):** only full `lgcw-allow: <path>` lines outside HTML comments
+  and Markdown fences pre-authorize exact relative paths in the frozen issue. Ordinary mentions,
+  denial prose and hidden text do not. The latest protected-path response invalidates older
+  permission unless it is an exact approve for that question's paths/content. A/B/A after a
+  denial re-asks without pushing. An unchanged approved builder receipt goes directly to gate,
+  with no additional builder turn; changed bytes re-ask. Plan T14 and design §4/§6.1 now match.
+  Accepted residual (D-004): gate code or an escaped process using the owner's gh login could
+  post an authenticated approve command. This local owner-identity limitation is unchanged.
+- **Continuations (F3/F4/F10/F11/F12):** owner feedback is never retained in pending_feedback;
+  every continuation uses current owner_answer. Each selected session with no successful
+  handoff retains its original initial/restart prompt, full issue and restart handoff. An unused
+  fresh marker is reused without spending a loss grant. Initial retries/owner clarifications/
+  rebuilds use source=build; known auth/quota/lost-session errors are excluded from gate-fix
+  attempts. Unknown paid results and actual gate fixes remain bounded. Restart uses the same
+  authenticated owner suffix as build/fix, retaining its fenced evidence copy.
+- **Publication/restore (F6/F9):** public thin WorkspacePort.commit_parents uses the existing
+  hooks-off git wrapper; both commit-recovery branches and restoration require exactly one
+  parent equal to the journaled parent. Copied trailers or a matching tree cannot adopt a merge.
+  New port-boundary tests move HEAD before push, introduce untracked work and change tracked
+  content before intent or immediately before reset. The unreachable pre-push body-size branch
+  is removed; the real render reserve is tested directly against its escaped receipt.
+- **Capture (F7):** read bounded windows with two margins, then discard the outer margin in
+  redacted coordinates before clipping. Shrinking replacements cannot pull an incomplete
+  credential into view. Credential shapes embedded in surrounding text are masked; the existing
+  standalone short-key rule remains, and extra embedded-key recognition avoids treating ordinary
+  task-* filenames as API keys. Existing visible-mask assertions remain. CapturedStream and
+  GitResult explicitly report truncation; git machine reads refuse incomplete path/metadata
+  output instead of parsing the omission marker as a filename. Gate logs still use bounded text.
+- **Handoff (F8):** fit explanatory prose in escaped JSON coordinates and, inside the clip loop,
+  measure the actual BuildMarker receipt. Keep paths/IDs/criteria/list entries intact. The
+  12,000-arrow handoff now journals and publishes after one turn instead of HandoffTooLarge.
+- **Dependency ladder:** no new package. Standard-library parsing/redaction and the approved git
+  CLI boundary implement only these narrow policy checks; no second SDK or model call.
+- **Qualification:** reproductions, validation corrections and killed guard mutants are retained
+  in docs/validation/2026-10-14-t14-r2.md. No paid/live run is needed for these deterministic
+  corrections. No merge, default push, force-push, assertion/timeout/lane weakening or gate waiver.
+
+
+### D-035 R3 — recovery, revocation and CommonMark scope (review6158686710)
+
+- **Gate crash:** an approve continuation may reuse its builder result only before any gate
+  record exists. A complete gate receipt finishes the restored command and clears owner_command
+  before routing; a crash after receipt cannot create an approval gate/build cycle. Runner tracks
+  bounded hashes of observed node/state pairs; repeated state or GraphRecursionError posts a
+  node_error ask through the normal durable question writer. The old command is finished after
+  that ask exists, so retry and abort remain usable. No paid dispatch or push on the safety path.
+- **Revocation:** select the latest protected-question acknowledgement as a unit, requiring exact
+  answer approve, matching question route, paths and content fingerprint. Also read current
+  allowed-author unmarked commands after that approval. Any later command revokes it before a
+  build/gate continuation, after the long gate and immediately before push. Journal the revoking
+  command against its question; denial/retry asks again, abort routes to the terminal blocked node.
+  Frozen ack snapshots remain authoritative for already-acked text; edited old comments cannot
+  rewrite them. A non-allowed author or workflow-marker-bearing comment cannot revoke or approve.
+- **Parser:** use only CRLF/CR/LF line breaks; require a standalone paragraph of full allow lines,
+  with actual blank line/body boundaries. Mask HTML comments (including unterminated ones) and
+  script/pre blocks while preserving line boundaries. Respect fence character and opening length.
+  Soft-wrapped prose, lazy blockquotes and Unicode separators cannot manufacture allow lines.
+- **Rebuild:** restored-parent feedback has its own code source rebuild, taking precedence over
+  stale persisted feedback. Its prompt states the restoration instruction and clears the old
+  handoff's reset-file claims. Stale owner pending feedback remains filtered; current authenticated
+  owner instructions still use the trusted suffix. This is a new build, not an accidental gate-fix
+  charge just because the restore instruction was code-produced.
+- **Accepted command residual (no code):** a command's owner is its GitHub creator, not its last
+  editor. Someone with write access could edit the owner's post-ask denial into approve before
+  acknowledgement. That is in the same accepted authority class as the shared owner-gh identity;
+  no editor-identity guarantee is claimed. Acked text is frozen and later edits do not change it.
+- **Optional carry explicitly to T17:** R3-F6 unused granted session-loss accounting can allow one
+  extra fresh session after a marker-only crash; R3-F7 approved claim mismatch should route its
+  exact path feedback to a charged gate fix; R3-F8 changed builder receipt should ask
+  workspace_changed directly; R3-F9 embedded sk-ant/sk-admin keys and long task-* names need the
+  specified redaction corrections. These are tracked in the T17 plan before full live execution.
+- **Qualification:** docs/validation/2026-10-14-t14-r3.md. All mutation probes use a unique
+  --basetemp per mutant; setup/import failures do not count as kills. No new dependencies, model
+  turns, GitHub live writes or permission widening.
+
+
+### D-035 R4 — Fail closed on HTML-block issue bodies
+
+- **Authority:** PR4 review6159722453, R4-F1, the sole security-P2 merge blocker under the
+  prototype-first bar. The raw issue body is checked with CRLF/CR/LF boundaries before masking.
+  Any line whose first non-space/tab character is < disables all issue-body lgcw-allow
+  pre-authorization. This deliberately conservative rule includes HTML-like lines inside code
+  examples. Protected changes then use the existing explicit question/content-bound approval.
+- **Implementation:** two added lines, no masking extension or new dependency. Existing inline
+  comment/script/pre and fence protections remain; tests isolate them with inline openings so
+  the whole-body guard cannot hide a missing parser guard.
+- **Proof:** style, CDATA, processing instruction, details and hidden-div graph cases ask without
+  a protected push; a plain standalone allow paragraph still publishes. Pure cases cover all
+  named HTML types with CR/LF/CRLF and the four requested parser-guard isolations. Five guard
+  removals are killed in separate basetemp directories. Full transcript:
+  docs/validation/2026-10-14-t14-r4.md.
+- **Scope:** V-NEW-1..3 and V-P3a..d carry to the T16 PR's hardening backlog as requested. No
+  optional T17 patch is included here; df82dc9 remains the parent of this small security fix.

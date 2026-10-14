@@ -16,7 +16,7 @@ from lgcw.models.harness import Role, SessionRef, SessionSpec, TurnInput, TurnOu
 class FakeHarness(HarnessPort):
     """Script independent role outputs and retain every session and attempted turn."""
 
-    def __init__(self, *, usage: Usage | None = None) -> None:
+    def __init__(self, *, usage: Usage | None = None, session_prefix: str = "fake") -> None:
         self.usage = (
             usage
             if usage is not None
@@ -29,6 +29,7 @@ class FakeHarness(HarnessPort):
             )
         )
         self.usage_script: deque[Usage] = deque()
+        self.session_prefix = session_prefix
         self.duration_s = 0.1
         self.rollout_path: Path | None = None
         self.sessions: list[SessionSpec] = []
@@ -46,7 +47,9 @@ class FakeHarness(HarnessPort):
         if self.closed:
             raise HarnessError("harness is closed")
         self.sessions.append(spec)
-        ref = SessionRef(session_id=f"fake-{spec.role}-{len(self.sessions)}", role=spec.role)
+        ref = SessionRef(
+            session_id=f"{self.session_prefix}-{spec.role}-{len(self.sessions)}", role=spec.role
+        )
         self._refs[ref.session_id] = ref
         return ref
 
