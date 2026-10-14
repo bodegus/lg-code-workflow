@@ -69,3 +69,13 @@ def test_real_layout_keeps_output_after_endgroup(failed_steps: tuple[str, ...]) 
     assert "Process completed with exit code 1" in output
     assert "CLEANUP-SHOULD-NOT-APPEAR" not in output
     assert "\ufeff" not in output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sequence", ["\x1b]52;c;clipboard-payload\x07", "\x1bPdevice-payload\x1b\\"]
+)
+def test_terminal_sequences_are_removed_with_their_payload(sequence: str) -> None:
+    result = trim_job_log(sequence + "\nError: retained failure\n\x00", ["Run tests"])
+    assert "payload" not in result and "\x1b" not in result and "\x00" not in result
+    assert "retained failure" in result

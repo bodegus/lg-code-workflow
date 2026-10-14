@@ -406,8 +406,18 @@ Rerun requests have an exact head/run/from-attempt intent and acceptance receipt
 receipt is recovered only by a newer observed attempt; otherwise the durable grace/deadline
 ends in an owner question, never another automatic dispatch. CI markers include attempt identity.
 Failure feedback is retained before the fix decision, selected failing job first, within the
-8 KB/job and 16 KB aggregate bounds. Runner annotations may qualify infra without a job log;
-application prose alone cannot. See D-036.
+8 KB/job and 16 KB aggregate bounds. Every failing log is attempted, with metadata fallback for 404/409/410. Only check-run output
+or annotations without a file path or under .github/ qualify service evidence; application-file
+annotations/log prose cannot authorize infrastructure or resource reruns. Setup names match known
+anchored forms; flaky rules require exact failing IDs. Same-named jobs cannot hide a blocked
+workflow. Runs must belong to this repository, PR branch and push/pull_request event, with PR
+association for the latter. Re-read identity/attempt and PR/remote head before rerun dispatch.
+A decision with no intent resumes that recorded operation. Evidence removes terminal controls,
+limits annotations to 2 KiB/job and measures escaped markers. Downloads above 8 MiB or observations
+above 100 runs/200 jobs ask rather than evaluating partial evidence. Classic protection 404 requires an explicit disabled classic-protection state or enforcement off
+with empty checks/contexts, after a complete ruleset read; a protected flag alone is ambiguous
+because rulesets also set it. Missing protection/enforced classic checks and unsupported workflow
+rules ask. See D-036 R1.
 
 ## 9. Data model (Pydantic v2)
 

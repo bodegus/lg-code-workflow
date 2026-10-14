@@ -231,7 +231,11 @@ async def test_ci_comment_crash_boundaries_never_repeat_dispatch(
     with pytest.raises(InjectedCrash):
         await execute_ci(ctx)
     assert await execute_ci(ctx) == "waiting"
-    assert sum(graph_case.github.rerun_requests.values()) <= 1
+    assert sum(graph_case.github.rerun_requests.values()) == (0 if boundary == 2 else 1)
+    if boundary == 2:
+        assert markers(graph_case, "ask")[-1].code == "ci_rerun_unknown"
+    else:
+        assert markers(graph_case, "ci")[-1].status == "success"
     assert len([m for m in markers(graph_case, "ci") if m.action == "rerun"]) == 1
     assert len(harness.turns) == 1
 

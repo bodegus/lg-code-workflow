@@ -923,3 +923,47 @@ our own code. Research references point into [research/](research/).
   8,192 bytes. Zero paid turns or GitHub writes. Transcript:
   docs/spikes/2026-10-13-actions-read.md. This confirms the adapter; it does not qualify a full run
   or permit failure/skipped required checks to be treated as green.
+
+
+### D-036 R1 corrections: execution provenance and complete bounded evidence
+
+- **Review:** PR #5 comment 6157412612. A recorded rerun decision with no matching intent
+  resumes that exact head/run/attempt operation; it does not spend the allowance a second time.
+  Once an intent exists, unknown dispatch still requires an observed newer attempt or owner
+  intervention. The fake exposes later attempts only after a real recorded rerun request.
+- **Execution ownership:** RunView retains event, head branch/repository, PR numbers and workflow
+  path. Before selecting latest attempts, require this repository, this PR branch and push or
+  pull_request; a PR event must name this PR. Re-read run identity/attempt and PR/remote head
+  immediately before dispatch. A move during polling or after intent asks without dispatch.
+- **Authoritative classification:** preserve annotation paths. Runner evidence is check-run
+  output or annotations without a file path or under .github/. Application-file annotations
+  cannot authorize infrastructure/resource reruns. Always try the failing job log; 404/409/410
+  preserves the available metadata. Resource patterns use those service fields, never application
+  log prose. Setup classification uses anchored known setup names, not arbitrary substrings such
+  as Test download cache. Flaky matches exact FAILED test identifiers, and every reported failing
+  identifier must be configured flaky. Existing positive resource fixtures now carry a service
+  annotation as well as the original log; their expected class/action assertions are retained.
+- **Required contexts:** a same-named passing job cannot hide an unresolved or approval-blocked
+  workflow. The first protected-flag-only 404 cross-check failed on real family-calendar:
+  protected=true, but protection.enabled=false and checks/contexts empty with enforcement off;
+  applicable rules are deletion/non_fast_forward/pull_request, without status checks.
+  Reviewer clarification 6157652390: after the complete ruleset read succeeds, explicit classic
+  disabled state (protection.enabled=false), or enforcement=off with empty checks/contexts,
+  proves no classic required checks. Missing protection, enforced checks or other enforcement
+  values ask. Unsupported workflows rules ask explicitly. All rows have SDK unit tests, including
+  the observed family-calendar shape. The repeated live policy read passes both authorized repos;
+  no owner remediation or policy write is needed.
+- **Evidence:** remove OSC/DCS/ANSI sequences and other controls except newline/tab before saving
+  evidence. Cap annotations at 2 KiB per job, each job at 8 KiB and aggregate at 16 KiB, preserving
+  log context/tail independently of annotation size. Measure the escaped FeedbackMarker before
+  publication. Startup failures retain workflow/path and check-suite output (or an explicit
+  unavailable-details statement), with a fingerprint stable across published heads.
+- **SDK ladder:** reuse githubkit 0.16.1 public stream=True and aiter_bytes, with its async context
+  keeping the transport open; finally closes the response. No new runtime dependency/client.
+  Stop complete-log downloads above 8 MiB, SHA/base-run observations above 100 and job observations
+  above 200; ask ci_evidence_limit instead of treating truncated observations as complete. The
+  HTTP unit tests use only the existing SDK with an in-memory synthetic transport and credentials.
+- **Proof:** named graph tests retained; exact dispatch counts replace the earlier <=1 crash
+  assertion, with boundary 2 explicitly requiring zero dispatch and ci_rerun_unknown. Added
+  provenance, every requested guard, control-byte, two-job annotation and SDK fallback/protection
+  tests. Qualification and killed guard mutants: docs/validation/2026-10-13-t15-r1.md.

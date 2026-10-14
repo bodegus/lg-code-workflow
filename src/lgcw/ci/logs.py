@@ -14,13 +14,24 @@ _TIMESTAMP = re.compile(r"^\d{4}-\d\d-\d\d[T ][\d:.]+(?:Z|[+-]\d\d:\d\d)?\s*")
 _PATH = re.compile(r"(?:[A-Za-z]:)?/(?:[^\s:]+/)*[^\s:]+")
 
 
+def clean_evidence(text: str) -> str:
+    """Remove terminal control sequences and controls except newline and tab."""
+    text = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\|$)", "", text)
+    text = re.sub(r"\x1b[P^_X][\s\S]*?(?:\x1b\\|$)", "", text)
+    text = _ANSI.sub("", text)
+    return redact(re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", text))
+
+
 def _clip(text: str, size: int) -> str:
     return text.encode()[: max(0, size)].decode(errors="ignore")
 
 
 def trim_job_log(raw: str, failed_steps: Sequence[str], max_bytes: int = 8192) -> str:
     """Keep first-error context and the failing group's tail within a UTF-8 byte cap."""
-    lines = [_TIMESTAMP.sub("", _ANSI.sub("", line)) for line in raw.lstrip("\ufeff").splitlines()]
+    lines = [
+        _TIMESTAMP.sub("", _ANSI.sub("", line))
+        for line in clean_evidence(raw).lstrip("\ufeff").splitlines()
+    ]
     groups: list[tuple[str, list[str]]] = []
     active: list[str] = []
     name = ""

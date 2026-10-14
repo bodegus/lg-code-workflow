@@ -24,7 +24,14 @@ def effective_required(
         # Before the job exists, conservatively include every observed workflow so an
         # approval/startup block cannot be filtered out. Unknown contexts never become green.
         pairs.update(
-            found or {(run.workflow, context) for run in runs} or {("unobserved-required", context)}
+            found
+            | {
+                (run.workflow, context)
+                for run in runs
+                if run.conclusion in {"action_required", "startup_failure"}
+                or not any(job.workflow == run.workflow for job in jobs)
+            }
+            or {("unobserved-required", context)}
         )
     return tuple(RequiredCheck(workflow=workflow, job=job) for workflow, job in sorted(pairs))
 

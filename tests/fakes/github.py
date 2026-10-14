@@ -49,6 +49,7 @@ class FakeGitHub(GitHubPort):
         self._failures: dict[str, tuple[int, BaseException]] = {}
         self._timelines: dict[str, list[tuple[float, list[RunView], list[JobView]]]] = {}
         self._timeline_starts: dict[str, datetime] = {}
+        self.after_call: Callable[[str], None] | None = None
         self.after_comment: Callable[[IssueComment], None] | None = None
         self._next_pr = 100
         self._next_comment = 1
@@ -72,6 +73,8 @@ class FakeGitHub(GitHubPort):
         self._call_counts[method] = self._call_counts.get(method, 0) + 1
 
     def _finish(self, method: str) -> None:
+        if self.after_call is not None:
+            self.after_call(method)
         failure = self._failures.get(method)
         if failure is not None and self._call_counts[method] == failure[0]:
             del self._failures[method]
@@ -96,11 +99,19 @@ class FakeGitHub(GitHubPort):
         self.prs[key] = current
         return current
 
+    def _timeline_repo(self, head_sha: str) -> str:
+        return next((repo for (repo, _), sha in self.branch_heads.items() if sha == head_sha), "")
+
     def _timeline(self, head_sha: str) -> tuple[list[RunView], list[JobView]]:
         elapsed = (self.clock.now() - self._timeline_starts[head_sha]).total_seconds()
         snapshot: tuple[list[RunView], list[JobView]] = ([], [])
         for offset, runs, jobs in self._timelines[head_sha]:
-            if offset <= elapsed:
+            if offset <= elapsed and all(
+                run.run_attempt <= 1
+                or self.rerun_requests.get((self._timeline_repo(head_sha), run.run_id), 0)
+                >= run.run_attempt - 1
+                for run in runs
+            ):
                 snapshot = (runs, jobs)
         return snapshot
 
@@ -355,6 +366,17 @@ class FakeGitHub(GitHubPort):
         self._finish("runs_for_sha")
         return result
 
+    async def get_run(self, repo: str, run_id: int) -> RunView:
+        """Read the current owned-or-impostor execution identity."""
+        self._record("get_run", repo=repo, run_id=run_id)
+        for head in set(self.runs) | set(self._timelines):
+            runs = self._timeline(head)[0] if head in self._timelines else self.runs[head]
+            found = next((run for run in runs if run.run_id == run_id), None)
+            if found is not None:
+                self._finish("get_run")
+                return found
+        raise KeyError(run_id)
+
     async def jobs_for_run(self, repo: str, run_id: int) -> list[JobView]:
         """Return the current scripted jobs for a run."""
         self._record("jobs_for_run", repo=repo, run_id=run_id)
@@ -369,7 +391,9 @@ class FakeGitHub(GitHubPort):
     async def job_log(self, repo: str, job_id: int) -> str:
         """Read a seeded job log."""
         self._record("job_log", repo=repo, job_id=job_id)
-        result = self.logs[job_id]
+        result = self.logs.get(
+            job_id, "Job log unavailable from GitHub; use job steps and annotations."
+        )
         self._finish("job_log")
         return result
 

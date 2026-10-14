@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 
 from lgcw.ci.classify import latest_runs
@@ -51,7 +52,14 @@ def _job_rule(
 ) -> tuple[CiClass, CiAction]:
     evidence = "\n".join((*job.annotations, log))
     baseline = [other for other in base if (other.workflow, other.name) == (job.workflow, job.name)]
-    infra_evidence = "\n".join(job.annotations)
+    service_annotations = tuple(
+        text
+        for index, text in enumerate(job.annotations)
+        if index >= len(job.annotation_paths)
+        or not job.annotation_paths[index]
+        or str(job.annotation_paths[index]).startswith(".github/")
+    )
+    infra_evidence = "\n".join((*service_annotations, job.service_output))
     setup_failed = any(SETUP_STEP.search(step) for step in job.failed_steps)
     if (
         any(pattern.search(infra_evidence) for pattern in INFRA_PATTERNS)
@@ -66,9 +74,10 @@ def _job_rule(
             for other in baseline
         )
         return "timeout", "rerun" if base_timeout else "fix"
-    if any(pattern.search(evidence) for pattern in RESOURCE_PATTERNS):
+    if any(pattern.search(infra_evidence) for pattern in RESOURCE_PATTERNS):
         return "resources", "rerun"
-    if any(test_id in evidence for test_id in repo.known_flaky):
+    failed_ids = set(re.findall(r"(?m)^\s*FAILED\s+(\S+)(?:\s|$)", log))
+    if failed_ids and failed_ids <= set(repo.known_flaky):
         return "flaky", "rerun"
     if job.failed_steps and any(
         other.conclusion == "failure" and set(job.failed_steps) <= set(other.failed_steps)
@@ -108,6 +117,17 @@ def decide(
             first = next((line for line in text.splitlines() if ERROR_START.search(line)), text)
             identity = failure_fingerprint(
                 job.workflow, job.name, job.failed_steps[0] if job.failed_steps else "", first
+            )
+        if klass == "startup_failure":
+            identity = failure_fingerprint(
+                "startup_failure",
+                "workflow-startup",
+                "workflow",
+                "\n".join(
+                    f"{run.workflow} {run.workflow_path} {run.startup_error or run.conclusion}"
+                    for run in latest_runs(runs, pushed_sha)
+                    if run.conclusion == "startup_failure"
+                ),
             )
         return CiDecision(
             head_sha=pushed_sha,

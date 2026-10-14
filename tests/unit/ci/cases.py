@@ -48,6 +48,10 @@ def run(
         head_sha=head,
         run_attempt=attempt,
         created_at=NOW,
+        head_branch="lgcw/issue-1",
+        head_repository="example/sandbox",
+        pull_requests=(100,),
+        workflow_path=".github/workflows/ci.yml",
     )
 
 

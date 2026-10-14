@@ -18,6 +18,10 @@ from lgcw.models.github import (
 from lgcw.models.issue import IssueRef, IssueSnapshot
 
 
+class CiEvidenceLimitError(ValueError):
+    """A complete CI observation would exceed the configured read safety bounds."""
+
+
 class RequiredPolicyError(ValueError):
     """Required policy cannot be proven through the Actions-only CI boundary."""
 
@@ -125,6 +129,10 @@ class GitHubPort(Protocol):
 
     async def runs_for_sha(self, repo: str, head_sha: str) -> list[RunView]:
         """Read workflow runs for an exact head."""
+        ...
+
+    async def get_run(self, repo: str, run_id: int) -> RunView:
+        """Re-read run ownership and latest attempt immediately before a rerun."""
         ...
 
     async def jobs_for_run(self, repo: str, run_id: int) -> list[JobView]:

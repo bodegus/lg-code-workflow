@@ -7,21 +7,28 @@ from typing import Any
 
 from langgraph.runtime import Runtime
 
-from lgcw.ci.classify import classify, latest_runs
+from lgcw.ci.classify import classify, latest_runs, owned_runs
 from lgcw.ci.decide import decide
-from lgcw.ci.logs import trim_job_log
+from lgcw.ci.feedback import failure_feedback
+from lgcw.ci.logs import clean_evidence, trim_job_log
 from lgcw.ci.observe import ci_history, effective_required
-from lgcw.ci.patterns import INFRA_PATTERNS
-from lgcw.github.port import RequiredPolicyError
+from lgcw.github.port import CiEvidenceLimitError, RequiredPolicyError
 from lgcw.graph.context import RunContext
 from lgcw.graph.nodes.common import attention, finish_command, observe, post_once
 from lgcw.ledger.markers import fingerprint
 from lgcw.models.ledger import CiMarker, FeedbackMarker, PushMarker, RerunMarker, RunMarker
-from lgcw.models.state import Feedback, RunState
-from lgcw.runlog import redact
+from lgcw.models.state import RunState
 
 
 async def ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
+    """Turn incomplete oversized evidence into an explicit owner question."""
+    try:
+        return await _ci_wait(state, runtime)
+    except CiEvidenceLimitError as error:
+        return attention("ci_evidence_limit", str(error), "ci_wait")
+
+
+async def _ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
     """Observe only the owned head and never repeat an unknown rerun request."""
     ctx = runtime.context
     if state.pr is None:
@@ -53,9 +60,13 @@ async def ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             return attention(
                 "head_moved", "PR/remote head changed while waiting for CI.", "reconcile"
             )
-        runs = latest_runs(await ctx.github.runs_for_sha(repo, push.head_sha), push.head_sha)
+        runs = latest_runs(
+            owned_runs(await ctx.github.runs_for_sha(repo, push.head_sha), repo, pr), push.head_sha
+        )
         batches = await asyncio.gather(*(ctx.github.jobs_for_run(repo, run.run_id) for run in runs))
         jobs = tuple(job for batch in batches for job in batch)
+        if len(jobs) > 200:
+            raise CiEvidenceLimitError("CI aggregate job count exceeds the 200 observation limit.")
         try:
             contexts = await ctx.github.required_check_contexts(repo, pr.base_ref)
         except RequiredPolicyError as error:
@@ -103,14 +114,9 @@ async def ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
         )
         tails: dict[int, str] = {}
         for job in failing:
-            # Runner acquisition/loss can have annotations without an available job log.
-            # Strong service annotation evidence must not depend on downloading that log.
-            annotated_infra = any(
-                pattern.search("\n".join(job.annotations)) for pattern in INFRA_PATTERNS
-            )
-            raw = "" if annotated_infra else await ctx.github.job_log(repo, job.job_id)
+            raw = await ctx.github.job_log(repo, job.job_id)
             path = f"ci/{push.head_sha}/{job.run_id}-{job.run_attempt}-{job.job_id}"
-            ctx.log.artifact(path + "-full.log", redact(raw))
+            ctx.log.artifact(path + "-full.log", clean_evidence(raw))
             tail = trim_job_log(raw, job.failed_steps)
             tails[job.job_id] = tail
             ctx.log.artifact(path + "-trimmed.log", tail)
@@ -155,6 +161,42 @@ async def ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             limits,
             pushed_sha=push.head_sha,
         )
+        # A durable decision spends the allowance once. If its intent was never written,
+        # continue that already-authorized operation instead of charging/deciding it again.
+        resumable = next(
+            (
+                entry.marker
+                for entry in reversed(obs.ledger.entries)
+                if isinstance(entry.marker, CiMarker)
+                and entry.marker.head_sha == push.head_sha
+                and entry.marker.action == "rerun"
+                and any(
+                    run.run_id == entry.marker.run_id
+                    and run.run_attempt == entry.marker.run_attempt
+                    for run in runs
+                )
+                and not any(
+                    isinstance(other.marker, RerunMarker)
+                    and other.marker.head_sha == push.head_sha
+                    and other.marker.run_id == entry.marker.run_id
+                    and other.marker.from_attempt == entry.marker.run_attempt
+                    for other in obs.ledger.entries
+                )
+            ),
+            None,
+        )
+        if resumable is not None and status == "failure":
+            resumed_job = next((job for job in failing if job.run_id == resumable.run_id), None)
+            if resumed_job is not None:
+                decision = decision.model_copy(
+                    update={
+                        "action": "rerun",
+                        "klass": resumable.klass,
+                        "fingerprint": resumable.fingerprint,
+                        "job": resumed_job,
+                        "note": "Resume the recorded CI rerun decision before its missing intent.",
+                    }
+                )
         selected_job = decision.job
         selected = next(
             (run for run in runs if selected_job is not None and run.run_id == selected_job.run_id),
@@ -169,35 +211,18 @@ async def ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             run_id=selected.run_id if selected else None,
             run_attempt=selected.run_attempt if selected else None,
         )
+        current = await ctx.github.get_pr(repo, number)
+        if current.state != "OPEN":
+            return {"pr": current, "outcome": "closed", "next_step": "end"}
+        if (
+            current.head_sha != push.head_sha
+            or await ctx.github.branch_head(repo, pr.head_ref) != push.head_sha
+        ):
+            return attention(
+                "head_moved", "PR/remote head changed during CI observation.", "reconcile"
+            )
         if decision.action == "fix":
-            pieces: list[str] = []
-            budget = 16384
-            ordered = sorted(
-                failing,
-                key=lambda failed: failed.job_id != (selected_job.job_id if selected_job else None),
-            )
-            for failed in ordered:
-                header = (
-                    f"Workflow: {failed.workflow}; job: {failed.name}; "
-                    f"conclusion: {failed.conclusion}\nAnnotations: "
-                    + "\n".join(failed.annotations)
-                    + "\n"
-                )
-                text = (
-                    (header + tails.get(failed.job_id, ""))
-                    .encode()[:budget]
-                    .decode(errors="ignore")
-                )
-                pieces.append(text)
-                budget -= len(text.encode())
-                if budget <= 0:
-                    break
-            feedback = Feedback(
-                source="ci",
-                summary=decision.note,
-                data="\n".join(pieces).encode()[:16384].decode(errors="ignore"),
-                fingerprint=decision.fingerprint,
-            )
+            feedback = failure_feedback(decision, failing, tails, runs)
             # Hydrate before the decision so a crash cannot route the builder with a
             # lossy generic CI message instead of the measured bounded failure evidence.
             await post_once(
@@ -233,10 +258,27 @@ async def ci_wait(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             await post_once(
                 ctx, number, intent, "CI rerun intent; unknown completion will not dispatch again."
             )
-            # Re-check the exact owned head immediately before the write.
+            # Re-read both run identity/attempt and the exact owned head before the write.
+            fresh_run = await ctx.github.get_run(repo, selected.run_id)
             current = await ctx.github.get_pr(repo, number)
-            if current.state != "OPEN" or current.head_sha != push.head_sha:
+            if current.state != "OPEN":
+                return {"pr": current, "outcome": "closed", "next_step": "end"}
+            if (
+                current.head_sha != push.head_sha
+                or await ctx.github.branch_head(repo, pr.head_ref) != push.head_sha
+            ):
                 return attention("head_moved", "PR changed before CI rerun dispatch.", "reconcile")
+            if (
+                not owned_runs((fresh_run,), repo, current)
+                or fresh_run.head_sha != push.head_sha
+                or fresh_run.run_attempt != selected.run_attempt
+                or fresh_run.workflow != selected.workflow
+                or fresh_run.status != "completed"
+                or fresh_run.conclusion not in {"failure", "timed_out"}
+            ):
+                return attention(
+                    "ci_run_changed", "Run ownership or attempt changed before rerun.", "ci_wait"
+                )
             await ctx.github.rerun_failed_jobs(repo, selected.run_id)
             await post_once(
                 ctx,

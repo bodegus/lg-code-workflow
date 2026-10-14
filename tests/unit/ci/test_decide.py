@@ -90,6 +90,7 @@ CASES = (
     ),
     Case(
         name="resources",
+        failing=(job(annotations=("ENOSPC: no space left on device",)),),
         logs={1: "ENOSPC: no space left on device"},
         expected_class="resources",
         expected_action="rerun",
@@ -208,7 +209,7 @@ def test_rerun_caps(past: CiHistory) -> None:
 def test_resource_repeat_goes_to_builder() -> None:
     result = decide(
         "failure",
-        [job()],
+        [job(annotations=("out of memory",))],
         [run()],
         None,
         history(reruns=1, total=1, classes={"resources": 1}),

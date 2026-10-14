@@ -92,6 +92,11 @@ class RunView(Strict):
     head_sha: str
     run_attempt: int
     created_at: datetime | None = None
+    head_branch: str | None = None
+    head_repository: str | None = None
+    pull_requests: tuple[int, ...] = ()
+    workflow_path: str = ""
+    startup_error: str = ""
 
 
 class JobView(Strict):
@@ -106,5 +111,7 @@ class JobView(Strict):
     run_attempt: int
     failed_steps: tuple[str, ...]
     annotations: tuple[str, ...]
+    annotation_paths: tuple[str | None, ...] = ()
+    service_output: str = ""
     runner_name: str | None
     url: str

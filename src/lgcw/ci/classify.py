@@ -11,6 +11,18 @@ from lgcw.models.config import Limits, RequiredCheck
 from lgcw.models.github import JobView, PrSnapshot, RunView
 
 
+def owned_runs(runs: Sequence[RunView], repo: str, pr: PrSnapshot) -> tuple[RunView, ...]:
+    """Reject same-commit executions from another event, repository, branch or PR."""
+    return tuple(
+        run
+        for run in runs
+        if run.head_repository == repo
+        and run.head_branch == pr.head_ref
+        and run.event in {"pull_request", "push"}
+        and (run.event != "pull_request" or pr.number in run.pull_requests)
+    )
+
+
 def latest_runs(runs: Sequence[RunView], head_sha: str) -> tuple[RunView, ...]:
     """Select the newest run and attempt for each workflow on the owned head."""
     latest: dict[str, RunView] = {}
