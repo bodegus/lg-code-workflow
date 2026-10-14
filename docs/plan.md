@@ -667,6 +667,8 @@ under reviewer6160563054; any landing is a separate PR after the first live run.
 - R1-OBS1 (live issue26): investigate post-push PR-head mismatch; later PR/ref/local SHA matched the owned journal. A bounded convergence read must preserve genuine head-move refusal; one operator retry recovered.
 - R1-OBS2 (live issue26): document inherited production NODE_ENV for builder container preflight; avoid an unnecessary missing-ESLint failure without skipping required checks.
 - R1-OBS3 (live issue26): label historical handoff CI/PR caveats clearly after code-owned readiness; operator receipt currently provides the actual hosted output (related W-8/X-6).
+- R1-OBS4 (PR8/6166068207): reduce builder over-verification; R1 spent323s/21 calls on a one-entry bump, including Docker/ARM64 smoke already covered by gate/CI. Candidate: smallest local verification satisfying acceptance criteria; compare R2/R3 cost before changing the builder skill.
+- R1-OBS5 (PR8/6166068207; **owner decision**): delegated operator answers use the owner's gh identity, so workflow cannot distinguish agent and human commands (D-004 residual). Decide later whether delegated runs may answer asks or must page Alex.
 - 6159291007/verifier: defer the fresh finding-verifier step until after first-run evidence.
 - 6159291007/disputes: defer disputed-finding handling until after first-run evidence.
 - 6159291007/threads: defer finding-thread resolution until after first-run evidence.
@@ -686,14 +688,17 @@ Test-first refusal/round-trip and isolated read-only checkout cases pass; final 
 writable root and successful file write. D-041 and PR11/comment6168333557 record the proof.
 The separate signed-command prerequisite (D-042) normalizes blank-separated role metadata while
 preserving author/marker checks and exact content-bound approval. Its41 focused unit/graph cases
-pass; full make check passes1092 units at95.33% coverage (6 live deselected). R2 remains incomplete pending the corrected cron
-proposal and reviewer verdict required by issue9/comment6167208491.
+pass; full make check passes1092 units at95.33% coverage (6 live deselected). PR12 merged as
+2ba0653a54a2af863f55c78b400f641720a63ee3. The later bounded continuation in
+issue9/comment6168424440 completed R2 as published; Alex merged target PR29. The owner-approved
+R2b issue30 now carries the cron and Dependabot corrections; no publication token exists.
 
 Each run: the owner writes the issue (with acceptance criteria). The builder executes an
 authorized `uv run lgcw run <ref>`, then uses `inspecting-runs` and writes `docs/runs/<id>.md`.
 
 - [x] **R1 simple (T17 live smoke; manifest risk configured deep, executed light under D-037):** family-calendar — update the transitive `proxy-addr` dependency so `npm audit --omit=dev --audit-level=high` passes. Qualified on issue26/PR27 at478db75: actual kill/resume passes, Node24/26 and container CI green. See [inspection](runs/r1-proxy-addr-26.md).
-- [ ] **R2 medium (expected: standard):** a family-calendar feature chosen by the owner.
+- [x] **R2 maintenance (risk configured deep; executed light under D-037):** owner-delegated [family-calendar#28](https://github.com/bodegus/family-calendar/issues/28): one Node26.8 CI lane, seven Dependabot updates consolidated, npm patch ranges, and a weekly GitHub Actions cron/manual dependency-refresh PR. Preserve audit/container gates; qualify the new Quality/container job identities on the exact target head. Record permission prerequisites and separate source validation from hosted cron execution after merge. D-043 records policy and known defects. The real run reached merge-ready on2adfa1627a64696c91856f60f251463dc2768eae; see [inspection](runs/r2-node26-weekly-deps-28.md). Final source qualification passes1092 units/95.33% coverage, doctor on Node26.8.2/npm12.0.2, and the live required-job identity test (1 test/1.75s). Alex merged target PR29 as22446af; cron isolation and minor/major Dependabot behavior are delivered separately by the owner-approved R2b follow-up, not claimed as R2 proof. No token was provisioned.
+- [ ] **R2b safety follow-up:** owner-approved [family-calendar#30](https://github.com/bodegus/family-calendar/issues/30), created from the exact be1a3cb draft after Alex merged PR29. Secret-free verification, clean token-only publication, safe missing-token skip, and retained minor/major/security Dependabot updates. The initial run used merged harness0a1f3c6; continuation used merged2ba0653. [PR31](https://github.com/bodegus/family-calendar/pull/31) reached merge-ready on ea13244369eb49c0fb65086bacd26862b80b5618 at13:19:40UTC, with exact-head Quality/container CI green. Independent reviewer6169271911 accepted the isolation proposal. Detailed inspection and post-merge hosted qualification remain separate follow-up work. The issue authorizes the three listed protected paths; no general manual-approval or credential authority is delegated.
 - [ ] **R3 complex (expected: deep):** a memgo-app feature chosen by the owner (candidates: bodegus/memgo-app#262, #261, #197). Watch: 12–32 minute CI on self-hosted runners, the known Mongo flake (bodegus/memgo-app#192), the long-wait cache question.
 - [ ] **Synthesis:** `docs/runs/phase-2-priorities.md` — the improvement areas ranked by cost, failures and owner effort, with evidence from the three runs. This ranking replaces the Phase 2 list below where they differ.
 

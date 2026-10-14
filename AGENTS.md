@@ -118,16 +118,22 @@ and override both agents within the task's scope. A `-reviewer` comment is a bin
 the builder within the task's scope; scope or design disputes go to the owner.
 
 Run the real workflow only with merged harness code. Workflow answers, protected-path approvals
-and aborts belong to Alex. Delegated retries are limited to verified transient/head-move cases
-explicitly authorized by Alex. For family-calendar R2, all commands were reserved to Alex;
-his later direct step-3 delegation requires merged fixes, cron security corrections and a reviewer
-verdict on the exact protected proposal (D-041). Record delegation on GitHub before acting; never infer it from a general
-request to run an issue. No delegation here grants merge authority or credential provisioning.
+and aborts belong to Alex unless he explicitly delegates that exact action. Delegated retries are
+limited to verified transient/head-move cases explicitly authorized by Alex. An owner-approved
+issue may authorize listed protected paths with `lgcw-allow:`; it does not authorize answers to
+later asks. Record delegation on GitHub before acting; never infer it from a general run request.
+D-041 and D-043 record R2/R2b authority and the earlier breaches. No publication token may be
+created before the cron isolation fix merges. No delegation grants the builder merge authority
+or credential provisioning.
 
 ## How to work
 
 - One plan task per PR. Branch `<agent>/<task-id>-<slug>` (e.g. `codex/t05-ci-classifier`).
-- Test first (superpowers:test-driven-development if available). Run `make check` before every push.
+- Test code changes first (superpowers:test-driven-development if available). Run `make check`
+  before pushes that change code, tests, dependencies, executable workflows or runtime config.
+- Documentation-only changes (README, `docs/`, contributor guidance) need only relevant normal
+  pre-commit lint checks; verify diagrams render. Do not run unit or live suites for docs-only
+  changes. Packaged agent skills, test fixtures and runtime configuration still use the full gate.
 - PR body: the sections in `.github/pull_request_template.md`. "Tested how" shows the commands and
   their output, not a summary; the builder proves every task runs locally.
 - In the same PR: tick the task's checkboxes in `docs/plan.md`; add or update `docs/decisions.md`

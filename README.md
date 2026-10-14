@@ -7,7 +7,102 @@ The PR is the durable run record; rerunning the same issue reconstructs progress
 **Phase 1 prototype:** the CLI and none/light review path are implemented and merged. R1 completed
 a real dependency bump through green CI, review and merge-ready, including a ci_wait kill/resume.
 One verified operator retry was needed before that interruption; see the [R1 evidence](docs/runs/r1-proxy-addr-26.md).
-Configured standard/deep reviews execute as one light review under D-037. R2/R3 and hardening remain planned.
+Configured standard/deep reviews execute as one light review under D-037. R2 also reached
+merge-ready, with known follow-up work; see [R2 evidence](docs/runs/r2-node26-weekly-deps-28.md).
+R3 and hardening remain planned.
+
+## Workflow
+
+```mermaid
+flowchart TD
+    Issue["GitHub issue with acceptance criteria"] --> Start["Owner starts the local CLI"]
+    Start --> Prepare["Validate issue, prepare workspace and draft PR"]
+    Prepare --> Build
+
+    subgraph Loop["Repeat until accepted or a limit is reached"]
+        Build["Build or fix — Codex builder"] --> Validate["Validate — local gate, publish, hosted CI"]
+        Validate -->|checks pass| Review["Review — fresh Codex reviewer"]
+        Review -->|changes requested| Build
+        Validate -->|fix needed| Build
+    end
+
+    Review -->|accepted| Ready["Merge-ready PR"]
+    Validate -->|approval needed or blocked| Ask["Owner question on GitHub"]
+    Review -->|limit reached| Ask
+    Build -->|blocked| Ask
+    Ask -->|answer or retry, then rerun CLI| Loop
+    Ask -->|abort| Stop["Stop; retain draft PR"]
+    classDef agent fill:#fff2cc,stroke:#996600,color:#222;
+    class Build,Review agent;
+```
+
+This is a cyclic state machine, shown at stage level. **Build → Validate → Review → Build** is the
+main improvement loop; acceptance exits to merge-ready. Validation includes claim/protected-file
+checks and local tests, then publication and hosted CI. Each review starts fresh; fix rounds resume
+the builder. Automatic retries are bounded, and the PR records progress so a CLI rerun resumes the
+recorded step. An owner response returns to the paused step, which may be validation rather than a
+new builder turn. A separate authorized reviewer handles merging.
+
+### Progression by role
+
+This swimlane view shows who acts and the order of a typical cycle. Owner questions can pause any
+stage; a CLI rerun resumes the recorded step. Fixes return to the same builder, while each review
+uses a fresh reviewer session.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Owner
+    participant GitHub
+    participant Workflow as Local workflow
+    participant Builder as Codex builder
+    participant CI as Hosted CI
+    participant Reviewer as Fresh Codex reviewer
+
+    Owner->>GitHub: Create issue with acceptance criteria
+    Owner->>Workflow: Start CLI for the issue
+    Workflow->>GitHub: Read issue, prepare draft PR
+
+    loop Build, validate and review until accepted or a limit is reached
+        Workflow->>Builder: Build or fix (resume builder for fixes)
+        Builder-->>Workflow: Changes and structured handoff
+        Workflow->>Workflow: Check actual changes and protected paths
+
+        opt Owner answer or protected-file approval required
+            Workflow->>GitHub: Record question and paused step
+            GitHub-->>Owner: Proposal or question with evidence
+            Owner->>GitHub: Answer or approve the exact proposal
+            Owner->>Workflow: Rerun CLI
+            Workflow->>GitHub: Read answer and resume recorded step
+        end
+
+        Workflow->>Workflow: Run local tests
+        alt Local gate passes
+            Workflow->>GitHub: Publish commit with exact lease
+            GitHub->>CI: Run PR checks
+            CI-->>GitHub: Report check results
+            Workflow->>GitHub: Poll checks for the exact head
+            GitHub-->>Workflow: CI results
+            alt CI passes
+                Workflow->>Reviewer: Review immutable checkout in fresh session
+                Reviewer-->>Workflow: Findings or acceptance
+                Workflow->>GitHub: Record review and any findings
+                Note over Workflow,Builder: Blocking findings return to the next fix cycle
+            else CI needs a fix
+                Note over Workflow,Builder: CI feedback returns to the next fix cycle
+            end
+        else Local gate needs a fix
+            Note over Workflow,Builder: Local test feedback returns to the next fix cycle
+        end
+    end
+
+    alt Accepted with required checks passing
+        Workflow->>GitHub: Mark PR merge-ready
+        Note over Owner,GitHub: A separate authorized reviewer handles merging
+    else Blocked or limit reached
+        Workflow->>GitHub: Record owner question and retain draft PR
+    end
+```
 
 | Read | For |
 |---|---|
@@ -20,7 +115,8 @@ Configured standard/deep reviews execute as one light review under D-037. R2/R3 
 ## Prerequisites
 
 Use Python 3.13 and uv, git, and gh logged in as the configured owner. For family-calendar, put
-stable Node >=24.20.0 and npm >=12.0.2,<13 on PATH. `doctor` checks these configured bounds.
+stable Node >=26.8.0,<26.9.0 and npm >=12.0.2,<12.1.0 on PATH for the owner-requested R2 policy.
+`doctor` checks these configured bounds. R1 used the earlier Node24/26 matrix policy.
 The workflow uses its own Codex login at `~/.lgcw/codex`; never copy the desktop auth file and
 never run another Codex process on that home while the workflow is active.
 
@@ -30,11 +126,11 @@ LGCW_CODEX_BIN="$(uv run python -c 'from codex_cli_bin import bundled_codex_path
 CODEX_HOME="$HOME/.lgcw/codex" "$LGCW_CODEX_BIN" login
 ```
 
-Alex's Mac has a prepared Node24.20.0/npm12.0.2 toolchain under `~/.lgcw/toolchains/`.
+Alex's Mac has a prepared Node26.8.2/npm12.0.2 toolchain under `~/.lgcw/toolchains/`.
 Select it for a shell with:
 
 ```bash
-export PATH="$HOME/.lgcw/toolchains/node-24.20.0-darwin-arm64/bin:$PATH"
+export PATH="$HOME/.lgcw/toolchains/node-26.8.2-darwin-arm64/bin:$PATH"
 ```
 
 ## Run, inspect and resume
@@ -42,6 +138,8 @@ export PATH="$HOME/.lgcw/toolchains/node-24.20.0-darwin-arm64/bin:$PATH"
 Run from this checkout, or pass `--root /path/to/lg-code-workflow` before the command. Replace N
 with an owner-supplied or explicitly delegated issue number. Alex delegated R1 issue creation
 and execution; it is [family-calendar#26](https://github.com/bodegus/family-calendar/issues/26).
+The next delegated exercise is [family-calendar#28](https://github.com/bodegus/family-calendar/issues/28),
+including a weekly GitHub Actions dependency refresh; it requires the R2 Quality/container policy.
 
 ```bash
 uv run lgcw doctor --repo bodegus/family-calendar

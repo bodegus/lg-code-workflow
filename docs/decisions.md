@@ -1363,3 +1363,76 @@ The P1 live qualification above used merged source; no real command or CLI runs 
 
 Signed-command full qualification: `make check` passes1092 units,6 live deselected,95.33%
 coverage (741.71s). No real harness or family-calendar CLI ran from this unmerged branch.
+
+## D-043 — R2: owner-delegated CI/dependency maintenance and weekly GitHub Action
+
+- **Authority/scope:** Alex requested the next full issue-to-PR exercise, removing the two-Node
+  matrix, consolidating every open Dependabot PR, adopting patch-only ranges, then adding a weekly
+  cron GitHub Action to refresh dependencies and the lockfile. The builder created
+  [family-calendar#28](https://github.com/bodegus/family-calendar/issues/28) with those criteria.
+  Runtime agents implement target changes; the operator does not edit target code or merge PRs.
+- **Policy migration:** replace CI/Node24.20.0 and CI/Node26.8.1 with stable CI/Quality; retain
+  CI/Container build and smoke test. The issue requires the production audit unconditionally in
+  the remaining quality lane. Node bounds become>=26.8.0,<26.9.0; npm bounds become>=12.0.2,<12.1.0 to match target engines~12.0.2.
+  Quality/container are now qualified on exact target head2adfa1627a64696c91856f60f251463dc2768eae
+  (run38553158311). Reviewer6166501403 authorized the narrow live fixture migration: only its
+  run ID/docstring change, keeping both assertions, lane and required-check logic. Historical
+  T17 specimen38441965084 belongs to the old Node24/26 policy; R1 run38546133890 remains
+  recorded in the R1 inspection.
+- **Version syntax:** npm uses `~x.y.z`, setup-node accepts26.8.x; the owner's `~>26.8` is intent,
+  not valid npm syntax. Keep updated Actions commit SHAs because `uses:` cannot express tilde
+  ranges. Docker must use a verified26.8 patch-line tag; other images remain outside this change.
+  Inventory captures seven Dependabot heads, with its Node24 Docker proposal superseded by26.8.
+  PR27's proxy-addr2.0.8 fix must survive regeneration while that PR remains unmerged.
+- **Cron delivery:** weekly schedule plus workflow_dispatch in target source, one stable refresh
+  branch/PR, no main push/approval/merge/release/deployment; avoid duplicate npm Dependabot work.
+  Source validation, hosted CI and an actual cron/manual run are distinct evidence. A scheduled
+  workflow must reach the default branch before scheduling starts.
+- **Observed prerequisite:** repository Actions settings report read defaults and
+  can_approve_pull_request_reviews=false, with no repository secrets configured. GitHub's
+  [settings source](https://github.com/github/docs/blob/main/content/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository.md)
+  documents that this flag controls GITHUB_TOKEN PR creation as well as approval. Owner approval
+  is requested before changing it; the workflow itself never approves. Its design must also
+  account for GitHub's
+  [event restrictions](https://github.com/github/docs/blob/main/data/reusables/actions/actions-do-not-trigger-workflows.md)
+  so refresh PRs receive CI (explicit workflow_dispatch is an exception).
+- **Carry-forward:** reviewer6166068207 required R1-OBS4 (over-verification/cost) and R1-OBS5
+  (delegated operator identity) in this next PR; both are in the backlog. Merged D-041 records
+  the later owner/reviewer boundary decisions; D-042 is reserved for the separate signed-command fix.
+  The R2 issue requests minimal local verification while retaining CI/container assertions.
+  No new Python dependency or workflow runtime implementation change is introduced.
+
+- **R2 outcome:** the final CLI used merged0a1f3c6 and one explicitly authorized retry6168470941,
+  then fresh review and merge-ready (exit0). Four earlier unauthorized answers and two unmerged
+  harness invocations remain breaches; later delegation does not retroactively authorize them.
+  The full inspection is [R2](runs/r2-node26-weekly-deps-28.md).
+- **Known defects and continuation:** the light reviewer missed both same-job fresh dependency
+  execution/later PAT publication and the zero npm PR limit that suppresses minor/major proposals.
+  No token exists or was created. Under reviewer6168424440, Alex merged the inert PR29 as
+  22446af60dc545a696b25c0583bfa767b8ebf159 at12:48:50UTC. The decision requires an
+  owner-approved R2b issue text and target main containing PR29 before the follow-up
+  run. No PAT may be created until the isolation fix merges; hosted refresh is not qualified.
+  The [draft](requests/r2b-safe-dependency-refresh.md) also carries the original minor/major/security
+  policy. Non-build owner feedback and post-publication revocation are deferred, not patched here.
+
+- **R2b authorization:** Alex explicitly approved creation and execution of the exact request at
+  be1a3cb. Created family-calendar issue30 from that immutable body, with only the required
+  contributor signature added. Its three allow paths authorize the named workflow, Dependabot
+  configuration and necessary AGENTS guidance. The real run started from clean merged
+  harness0a1f3c6 after target main contained22446af; unmerged PR12 code was not used. PR31 reached
+  merge-ready on ea13244369eb49c0fb65086bacd26862b80b5618 at13:19:40UTC after a continuation
+  from merged2ba0653. Exact-head Quality/container CI38569353866 and local gate passed;
+  independent reviewer6169271911 accepted the isolation proposal. Credentialed publication
+  and hosted missing-token behavior still require post-merge qualification. Issue approval does not grant credential provisioning or merge
+  authority, nor authorize later answers beyond the listed protected scope.
+
+- **Final policy live evidence:** read-only required-job identity test passed (1 test/1.75s) on
+  run38553158311 with its Quality/container jobs. Doctor from merged2ba0653, reading this PR's
+  configuration, accepted Node26.8.2 in>=26.8.0,<26.9.0 and npm12.0.2 in>=12.0.2,<12.1.0.
+  Both adapters used measured live evidence; no assertion, lane or required-check logic changed.
+
+- **Final source qualification:** full make check passes1092 units,6 live deselected,95.33%
+  coverage in801.67s. This qualifies the final R2 policy/fixture migration together with merged
+  P1 and signed-command prerequisites. The fixture change is only the reviewer-authorized run
+  ID/docstring; both assertions and the live lane remain unchanged. Documentation-only changes
+  used normal lint/render checks under Alex's exception; this mixed config/test PR uses full gates.
