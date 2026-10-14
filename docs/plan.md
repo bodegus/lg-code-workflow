@@ -596,12 +596,15 @@ checks gh login, Codex account login without a model turn, git, configured tools
   `uv run lgcw run bodegus/family-calendar#<n>`, kill once during ci_wait, rerun to merge-ready,
   and retain report/usage/CI/side-effect receipts proving no duplicate dispatch or publication.
   Proposed owner-created issue text: [R1 issue proposal](requests/r1-proxy-addr-issue.md).
-- [ ] **Step 5: Commit** `feat(cli): doctor, run, report and family-calendar live smoke`.
+- [x] **Step 5: Commit** `feat(cli): doctor, run, report and family-calendar live smoke`.
 
 T17 is authorized stacked on2108897 by reviewer6160563054. Optional09c6c78 is excluded;
 it stays on its local branch for a separate post-first-run PR. Doctor and the actual configured-job
 identity check pass; the full CLI R1 kill/resume is not run because Alex has not created its issue.
 D-039 records the observed host-version prerequisite and local qualified toolchain.
+
+Local T17 qualification:1025 units,5 live deselected,95.22% coverage; all commit hooks PASS.
+Step4 stays open for the actual owner-created R1 kill/resume and merge-ready proof.
 
 #### Hardening backlog
 
