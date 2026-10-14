@@ -1284,3 +1284,37 @@ Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behav
 - **Evidence:** [R1 inspection](runs/r1-proxy-addr-26.md) retains actual commands, cost, timeline,
   local receipt identities and hosted CI links. R1-OBS1..3 carry in the existing backlog; no new
   dependencies or speculative hardening. R2/R3 and their synthesis remain separate future work.
+
+## D-041 — R2: owner-delegated CI/dependency maintenance and weekly GitHub Action
+
+- **Authority/scope:** Alex requested the next full issue-to-PR exercise, removing the two-Node
+  matrix, consolidating every open Dependabot PR, adopting patch-only ranges, then adding a weekly
+  cron GitHub Action to refresh dependencies and the lockfile. The builder created
+  [family-calendar#28](https://github.com/bodegus/family-calendar/issues/28) with those criteria.
+  Runtime agents implement target changes; the operator does not edit target code or merge PRs.
+- **Policy migration:** replace CI/Node24.20.0 and CI/Node26.8.1 with stable CI/Quality; retain
+  CI/Container build and smoke test. The issue requires the production audit unconditionally in
+  the remaining quality lane. Node bounds become>=26.8.0,<26.9.0; npm bounds remain>=12.0.2,<13.
+  These are owner-requested target identities, pending exact-head hosted qualification; the
+  historical T17 identity fixture is not changed without reviewer authorization.
+- **Version syntax:** npm uses `~x.y.z`, setup-node accepts26.8.x; the owner's `~>26.8` is intent,
+  not valid npm syntax. Keep updated Actions commit SHAs because `uses:` cannot express tilde
+  ranges. Docker must use a verified26.8 patch-line tag; other images remain outside this change.
+  Inventory captures seven Dependabot heads, with its Node24 Docker proposal superseded by26.8.
+  PR27's proxy-addr2.0.8 fix must survive regeneration while that PR remains unmerged.
+- **Cron delivery:** weekly schedule plus workflow_dispatch in target source, one stable refresh
+  branch/PR, no main push/approval/merge/release/deployment; avoid duplicate npm Dependabot work.
+  Source validation, hosted CI and an actual cron/manual run are distinct evidence. A scheduled
+  workflow must reach the default branch before scheduling starts.
+- **Observed prerequisite:** repository Actions settings report read defaults and
+  can_approve_pull_request_reviews=false, with no repository secrets configured. GitHub's
+  [settings source](https://github.com/github/docs/blob/main/content/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository.md)
+  documents that this flag controls GITHUB_TOKEN PR creation as well as approval. Owner approval
+  is requested before changing it; the workflow itself never approves. Its design must also
+  account for GitHub's
+  [event restrictions](https://github.com/github/docs/blob/main/data/reusables/actions/actions-do-not-trigger-workflows.md)
+  so refresh PRs receive CI (explicit workflow_dispatch is an exception).
+- **Carry-forward:** reviewer6166068207 required R1-OBS4 (over-verification/cost) and R1-OBS5
+  (delegated operator identity; later owner decision) in this next PR; both are in the backlog.
+  The R2 issue requests minimal local verification while retaining CI/container assertions.
+  No new Python dependency or workflow runtime implementation change is introduced.

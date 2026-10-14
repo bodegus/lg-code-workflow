@@ -532,7 +532,7 @@ default_branch = "main"
 allowed_authors = ["bodegus"]
 setup = ["npm ci"]
 gate = ["npm run check"]
-required_checks = [{ workflow = "CI", job = "Node 24.20.0" }, { workflow = "CI", job = "Node 26.8.1" }]
+required_checks = [{ workflow = "CI", job = "Quality" }, { workflow = "CI", job = "Container build and smoke test" }]
 protected_globs = [".github/workflows/**"]
 excluded_globs = ["package-lock.json"]
 source_globs = ["src/**"]

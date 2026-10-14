@@ -20,7 +20,8 @@ Configured standard/deep reviews execute as one light review under D-037. R2/R3 
 ## Prerequisites
 
 Use Python 3.13 and uv, git, and gh logged in as the configured owner. For family-calendar, put
-stable Node >=24.20.0 and npm >=12.0.2,<13 on PATH. `doctor` checks these configured bounds.
+stable Node >=26.8.0,<26.9.0 and npm >=12.0.2,<13 on PATH for the owner-requested R2 policy.
+`doctor` checks these configured bounds. R1 used the earlier Node24/26 matrix policy.
 The workflow uses its own Codex login at `~/.lgcw/codex`; never copy the desktop auth file and
 never run another Codex process on that home while the workflow is active.
 
@@ -30,11 +31,11 @@ LGCW_CODEX_BIN="$(uv run python -c 'from codex_cli_bin import bundled_codex_path
 CODEX_HOME="$HOME/.lgcw/codex" "$LGCW_CODEX_BIN" login
 ```
 
-Alex's Mac has a prepared Node24.20.0/npm12.0.2 toolchain under `~/.lgcw/toolchains/`.
+Alex's Mac has a prepared Node26.8.2/npm12.0.2 toolchain under `~/.lgcw/toolchains/`.
 Select it for a shell with:
 
 ```bash
-export PATH="$HOME/.lgcw/toolchains/node-24.20.0-darwin-arm64/bin:$PATH"
+export PATH="$HOME/.lgcw/toolchains/node-26.8.2-darwin-arm64/bin:$PATH"
 ```
 
 ## Run, inspect and resume
@@ -42,6 +43,8 @@ export PATH="$HOME/.lgcw/toolchains/node-24.20.0-darwin-arm64/bin:$PATH"
 Run from this checkout, or pass `--root /path/to/lg-code-workflow` before the command. Replace N
 with an owner-supplied or explicitly delegated issue number. Alex delegated R1 issue creation
 and execution; it is [family-calendar#26](https://github.com/bodegus/family-calendar/issues/26).
+The next delegated exercise is [family-calendar#28](https://github.com/bodegus/family-calendar/issues/28),
+including a weekly GitHub Actions dependency refresh; it requires the R2 Quality/container policy.
 
 ```bash
 uv run lgcw doctor --repo bodegus/family-calendar

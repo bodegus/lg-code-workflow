@@ -3,10 +3,9 @@ default_branch = "main"
 allowed_authors = ["bodegus"]
 setup = ["npm ci"]
 gate = ["npm run check"]
-# Reconfirmed against main .github/workflows/ci.yml and real CI run 38441965084.
+# R2 owner-requested target: family-calendar#28. Qualify against its exact-head CI before merge.
 required_checks = [
-  { workflow = "CI", job = "Node 24.20.0" },
-  { workflow = "CI", job = "Node 26.8.1" },
+  { workflow = "CI", job = "Quality" },
   { workflow = "CI", job = "Container build and smoke test" },
 ]
 protected_globs = [".github/**", "AGENTS.md", "CLAUDE.md", ".agents/**", ".claude/**", ".codex/**", ".env*", ".npmrc"]
@@ -18,10 +17,11 @@ known_flaky = []
 pre_existing_policy = "note"
 
 [tool_minimums]
-node = [24, 20, 0]
+node = [26, 8, 0]
 npm = [12, 0, 2]
 
 [tool_maximums]
+node = [26, 9, 0]
 npm = [13, 0, 0]
 
 [[risk_classes]]
