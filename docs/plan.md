@@ -586,22 +586,31 @@ exit0 success/merge-ready,2 waiting,3 blocked/closed,1 error. `make_context(conf
 is the sole real-adapter allow_live=True construction boundary. `doctor(config, repo) -> list[Check]`
 checks gh login, Codex account login without a model turn, git, configured tools and writable home.
 
-- [ ] **Step 1: Write failing tests:** CLI parsing/exit codes with injected fake context;
+- [x] **Step 1: Write failing tests:** CLI parsing/exit codes with injected fake context;
   doctor missing npm; live configured workflow/job identity on real recent family-calendar runs.
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** run/report/doctor and the family-calendar config from its actual CI:
+- [x] **Step 2: Run** → FAIL.
+- [x] **Step 3: Implement** run/report/doctor and the family-calendar config from its actual CI:
   Node24.20.0, Node26.8.1, Container build and smoke test (re-confirm); setup npm ci, gate npm run check.
 - [ ] **Step 4: Run** `make check` → PASS. The live smoke is Phase1bR1, the family-calendar
   proxy-addr production-audit fix. Once Alex has created its issue, run
   `uv run lgcw run bodegus/family-calendar#<n>`, kill once during ci_wait, rerun to merge-ready,
   and retain report/usage/CI/side-effect receipts proving no duplicate dispatch or publication.
   Proposed owner-created issue text: [R1 issue proposal](requests/r1-proxy-addr-issue.md).
-- [ ] **Step 5: Commit** `feat(cli): doctor, run, report and family-calendar live smoke`.
+- [x] **Step 5: Commit** `feat(cli): doctor, run, report and family-calendar live smoke`.
+
+T17 is authorized stacked on2108897 by reviewer6160563054. Optional09c6c78 is excluded;
+it stays on its local branch for a separate post-first-run PR. Doctor and the actual configured-job
+identity check pass; the full CLI R1 kill/resume is not run because Alex has not created its issue.
+D-039 records the observed host-version prerequisite and local qualified toolchain.
+
+Local T17 qualification:1025 units,5 live deselected,95.22% coverage; all commit hooks PASS.
+Step4 stays open for the actual owner-created R1 kill/resume and merge-ready proof.
 
 #### Hardening backlog
 
 Non-blocking items are recorded here, one line per review ID/source, for prioritization from the
-first real run logs. Local optional work is preserved separately; it does not change df82dc9.
+first real run logs. Local optional09c6c78 is preserved separately and is excluded from T17
+under reviewer6160563054; any landing is a separate PR after the first live run.
 
 - R3-F6 (PR4): unused granted session-loss marker can allow one extra fresh session/paid turn.
 - R3-F7 (PR4): approved handoff/diff mismatch should feed exact paths to a charged gate fix.
@@ -643,6 +652,17 @@ first real run logs. Local optional work is preserved separately; it does not ch
 - X-8 (PR6/R1): repair the old-head green-CI body after a post-ready head move.
 - X-10 (PR6/R1): explicitly label the fenced review diff as untrusted in its template.
 - X-11 (PR6/R1): kill RV4/RV17/RC1b/RV9 mutants; seed active label for a non-vacuous switch check.
+- Y-1 (PR7/R1): mutation-test allowed_authors membership before real adapter construction.
+- Y-2 (PR7/R1): record factory calls instead of swallowed AssertionErrors in CLI boundary tests.
+- Y-3 (PR7/R1): unit autouse should disable make_context and isolate GH_CONFIG_DIR.
+- Y-4 (PR7/R1): restrict issue numbers to ASCII decimal [1-9][0-9]{0,9}.
+- Y-5 (PR7/R1): probe tools with the gate's bash-lc stripped environment and PATH behavior.
+- Y-6 (PR7/R1): handle Codex path/mkdir/lock failures and distinguish a busy profile.
+- Y-7 (PR7/R1): qualify doctor GitHub-login membership in allowed_authors.
+- Y-8 (PR7/R1): classify eslint.config.js, .node-version and .gitattributes for protection/risk.
+- Y-9 (PR7/R1): capture the first smoke CLI's stdout to a file instead of an unread PIPE.
+- Y-10 (PR7/R1): R1 production audit runs in CI, not the local npm-run-check gate (documented).
+- Y-11 (PR7/R1): report regenerates local report.md (README wording corrected).
 - 6159291007/verifier: defer the fresh finding-verifier step until after first-run evidence.
 - 6159291007/disputes: defer disputed-finding handling until after first-run evidence.
 - 6159291007/threads: defer finding-thread resolution until after first-run evidence.

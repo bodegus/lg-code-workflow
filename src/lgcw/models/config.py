@@ -86,6 +86,8 @@ class RepoConfig(Strict):
     tests_globs: tuple[str, ...]
     docs_globs: tuple[str, ...]
     risk_classes: tuple[RiskClass, ...]
+    tool_minimums: dict[str, tuple[int, int, int]] = Field(default_factory=dict)
+    tool_maximums: dict[str, tuple[int, int, int]] = Field(default_factory=dict)
     known_flaky: tuple[str, ...] = ()
     pre_existing_policy: Literal["note", "ask"] = "note"
 

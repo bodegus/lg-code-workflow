@@ -1211,3 +1211,58 @@ R1-F2 removes git's separator TAB and keeps quoted paths fail closed before disp
 P0/P1 findings become recorded blockers requiring owner inspection, including lost-review-response
 recovery. Verdict/explanation and dropped reasons are visible (X-3); W-3 needs a new adapter call
 and carries with the other named non-blockers. No dependency, agent turn or live write added.
+
+## D-039 — Minimal CLI and the R1 qualification boundary
+
+- **Authority:** reviewer6160563054 authorizes one T17 branch stacked on T16 head2108897.
+  Scope is run/report/doctor and family-calendar only. This supersedes the earlier optional-work
+  landing note: local09c6c78 (R3-F6..F9) stays out of T17 and becomes a separate small PR after
+  the first live run. No deferred hardening code is included.
+- **CLI:** argparse produces a Pydantic request before configuration or capability access.
+  make_context is the sole allow_live=True construction boundary for GitHub, git and Codex;
+  it verifies the authenticated login against allowed owners. A per-issue flock prevents
+  simultaneous dispatch; every run closes its owned harness. Report only reads local evidence.
+  Exit0 success/merge_ready,2 waiting,3 blocked/closed,1 error. Argument/error text is redacted.
+- **Doctor:** a small typed host port uses executable discovery and bounded subprocess status,
+  not captured auth output. The pinned Codex CLI's login status uses exactly PATH/HOME/LANG/
+  CODEX_HOME and the same profile lock as the harness, with no server or model turn. Writable
+  state, gh login, git and configured tools are checked. New optional RepoConfig tool_minimums/
+  tool_maximums carry numeric release-version bounds; existing configurations retain defaults.
+- **Observed necessity:** family-calendar main fb473b5e2baf76f82d352dc39a26571a08bc75a5 requires
+  Node>=24.20.0 and npm>=12.0.2,<13. The host's24.3.0/11.4.2 made an existence-only doctor
+  falsely pass. Three test-first version cases now reject old tools and npm13, and accept the
+  required versions. A prepared local toolchain, rather than changing checks or engines, enables
+  actual CLI qualification. Both ordinary and bash-lc probes select24.20.0/12.0.2.
+- **Operational toolchain evidence:** GitHub actions/node-versions release24.20.0-33034074684,
+  node-24.20.0-darwin-arm64.tar.gz, SHA256
+  1e637ea3c7d472dbc689609108f9aeff544a6a4ebf94f2534df3ac59c799a6b3 matched the release digest.
+  Extracted with tar's data filter into ~/.lgcw/toolchains/node-24.20.0-darwin-arm64; npm12.0.2
+  installed into that prefix. This is local operational state, not a workflow runtime dependency.
+- **Dependency choice:** retain approved Python dependencies. argparse, fcntl, shlex, shutil,
+  subprocess and tempfile are sufficient local interfaces; no CLI framework, process manager or
+  new service client is needed. Existing SDK adapters remain the service boundary (D-008/D-034),
+  and the T11 logger supplies reports. No pyproject/lockfile or runtime dependency change.
+- **Family policy:** actual main CI and live run38441965084 verify CI/Node24.20.0,
+  CI/Node26.8.1 and CI/Container build and smoke test. Setup npm ci, gate npm run check;
+  all three jobs remain required. Lockfile sizing exclusion retains its supply-chain risk.
+- **Live smoke:** explicit owner-created family-calendar issue selection launches the real CLI,
+  observes newly appended ci_wait events, records public PR/dispatch/publication receipts and
+  hashes of builder turns, then kills only its direct child and owned descendants. A retained
+  intent/killed receipt prevents a second deliberate kill on retries. Resume must exit0, preserve
+  prior receipts and turn files, have unique dispatch/push/review records, one exact-head ready
+  receipt, an open non-draft PR and successful configured CI jobs. No fixture or manual patch
+  substitutes for the actual issue execution. Unknown interruption outcome stops for inspection.
+- **Qualification state:** doctor and read-only CI identity qualification pass without a paid
+  model turn. Full R1 kill/resume remains unrun until Alex creates the issue. The source PR will
+  say needs owner and retain the exact prerequisite; these checks do not claim complete execution.
+
+### D-039 R1 — Doctor sandbox GitHub regression
+
+PR7 review6161451205 requires a zero-model-turn pinned workspace-sandbox auth-status probe
+with the harness's four-key environment. Doctor accepts only exit1 (credential denial); auth
+success or an unavailable/timed-out probe fails the check. HostProbe uses -1 for unavailable
+probes so failures cannot masquerade as denial. No raw auth output is returned or printed.
+Reviewer authorization6161650797 permits FakeDoctor to return1 only for the exact new sandbox
+argv, preserving every existing assertion. Explicit allowed/denied/unavailable cases are added.
+This preserves the current-host D-004 observation, not a general home-isolation guarantee.
+Y-1..Y-11 carry in the backlog; Y-10/Y-11 document the current gate/report behavior. No dependency.
