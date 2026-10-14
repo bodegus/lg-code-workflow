@@ -868,6 +868,48 @@ our own code. Research references point into [research/](research/).
   source-copy mutants are recorded in docs/validation/2026-10-13-t14-r1.md and the PR. No new
   dependency or paid/live call is needed for these corrections; standard-library bounded I/O
   and D-025's existing git adapter cover the added operations.
+
+
+### D-035 R2 approval revocation, original prompt recovery and exact ancestry
+
+- **Review:** PR #4 comment6157601488. Required F1–F6 and optional F7–F12 fixed in this append.
+- **Explicit authorization (F1/F2/F5):** only full `lgcw-allow: <path>` lines outside HTML comments
+  and Markdown fences pre-authorize exact relative paths in the frozen issue. Ordinary mentions,
+  denial prose and hidden text do not. The latest protected-path response invalidates older
+  permission unless it is an exact approve for that question's paths/content. A/B/A after a
+  denial re-asks without pushing. An unchanged approved builder receipt goes directly to gate,
+  with no additional builder turn; changed bytes re-ask. Plan T14 and design §4/§6.1 now match.
+  Accepted residual (D-004): gate code or an escaped process using the owner's gh login could
+  post an authenticated approve command. This local owner-identity limitation is unchanged.
+- **Continuations (F3/F4/F10/F11/F12):** owner feedback is never retained in pending_feedback;
+  every continuation uses current owner_answer. Each selected session with no successful
+  handoff retains its original initial/restart prompt, full issue and restart handoff. An unused
+  fresh marker is reused without spending a loss grant. Initial retries/owner clarifications/
+  rebuilds use source=build; known auth/quota/lost-session errors are excluded from gate-fix
+  attempts. Unknown paid results and actual gate fixes remain bounded. Restart uses the same
+  authenticated owner suffix as build/fix, retaining its fenced evidence copy.
+- **Publication/restore (F6/F9):** public thin WorkspacePort.commit_parents uses the existing
+  hooks-off git wrapper; both commit-recovery branches and restoration require exactly one
+  parent equal to the journaled parent. Copied trailers or a matching tree cannot adopt a merge.
+  New port-boundary tests move HEAD before push, introduce untracked work and change tracked
+  content before intent or immediately before reset. The unreachable pre-push body-size branch
+  is removed; the real render reserve is tested directly against its escaped receipt.
+- **Capture (F7):** read bounded windows with two margins, then discard the outer margin in
+  redacted coordinates before clipping. Shrinking replacements cannot pull an incomplete
+  credential into view. Credential shapes embedded in surrounding text are masked; the existing
+  standalone short-key rule remains, and extra embedded-key recognition avoids treating ordinary
+  task-* filenames as API keys. Existing visible-mask assertions remain. CapturedStream and
+  GitResult explicitly report truncation; git machine reads refuse incomplete path/metadata
+  output instead of parsing the omission marker as a filename. Gate logs still use bounded text.
+- **Handoff (F8):** fit explanatory prose in escaped JSON coordinates and, inside the clip loop,
+  measure the actual BuildMarker receipt. Keep paths/IDs/criteria/list entries intact. The
+  12,000-arrow handoff now journals and publishes after one turn instead of HandoffTooLarge.
+- **Dependency ladder:** no new package. Standard-library parsing/redaction and the approved git
+  CLI boundary implement only these narrow policy checks; no second SDK or model call.
+- **Qualification:** reproductions, validation corrections and killed guard mutants are retained
+  in docs/validation/2026-10-14-t14-r2.md. No paid/live run is needed for these deterministic
+  corrections. No merge, default push, force-push, assertion/timeout/lane weakening or gate waiver.
+
 ## D-036 — CI observation, required-policy union and rerun intent
 
 - **Decided:** T15, 2026-10-13. The CI node contains no LLM dispatch. Poll exact-head latest
@@ -967,3 +1009,13 @@ our own code. Research references point into [research/](research/).
   assertion, with boundary 2 explicitly requiring zero dispatch and ci_rerun_unknown. Added
   provenance, every requested guard, control-byte, two-job annotation and SDK fallback/protection
   tests. Qualification and killed guard mutants: docs/validation/2026-10-13-t15-r1.md.
+
+
+### D-036 run-association read qualification (no policy change)
+
+Pinned SDK read: own OPEN PR5/run38488590957 reports exact repo/branch/head and association[5];
+the D-032 CLOSED T5 fixture PR25 has an empty association list. No universal open-run guarantee
+is inferred. The CI node already stops closed PRs before selecting executions; no ownership
+policy change follows. Missing open associations continue to fail closed and the actual T17 run
+must qualify its own metadata. Zero model turns/GitHub writes; exact transcript in
+`docs/spikes/2026-10-14-run-associations.md`.

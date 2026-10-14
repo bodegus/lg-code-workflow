@@ -25,10 +25,18 @@ from lgcw.harness.errors import (
     HarnessSessionLostError,
 )
 from lgcw.harness.prompts import render_build_turn, render_fix_turn, render_restart_turn
-from lgcw.ledger.markers import fingerprint, render_marker
+from lgcw.ledger.markers import fingerprint
 from lgcw.models.handoff import BuildHandoff
 from lgcw.models.harness import SessionRef, SessionSpec
-from lgcw.models.ledger import BuildMarker, BuildSource, FeedbackMarker, GateMarker, SessionMarker
+from lgcw.models.ledger import (
+    AckMarker,
+    AskMarker,
+    BuildMarker,
+    BuildSource,
+    FeedbackMarker,
+    GateMarker,
+    SessionMarker,
+)
 from lgcw.models.review import GatedFinding
 from lgcw.models.state import Feedback, RunState
 
@@ -88,6 +96,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
     )
     if recorded_feedback:
         feedback, findings = recorded_feedback.feedback, recorded_feedback.findings
+    if feedback is not None and feedback.source == "owner":
+        feedback = None
     completed = [
         entry.marker
         for entry in state.ledger.entries
@@ -97,6 +107,43 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
     ]
     if completed:
         handoff = completed[-1].handoff
+    if (
+        previous is not None
+        and previous.handoff is not None
+        and previous.phase == "complete"
+        and state.owner_command is not None
+        and state.owner_command.verb == "answer"
+        and state.owner_command.text.strip() == "approve"
+    ):
+        ack = next(
+            (
+                entry.marker
+                for entry in reversed(state.ledger.entries)
+                if isinstance(entry.marker, AckMarker) and entry.marker.command_id == command_id
+            ),
+            None,
+        )
+        question = next(
+            (
+                entry.marker
+                for entry in reversed(state.ledger.entries)
+                if isinstance(entry.marker, AskMarker)
+                and ack is not None
+                and entry.marker.seq == ack.seq
+            ),
+            None,
+        )
+        if question is not None and question.code == "protected_path":
+            tree = await ctx.workspace.worktree_fingerprint(parent)
+            claims = await check_work_claims(state, ctx, previous.handoff, parent)
+            if tree == previous.tree_fingerprint and claims.ok:
+                return {"handoff": previous.handoff, "ledger": state.ledger, "next_step": "gate"}
+            await finish_command(ctx, state, number)
+            if claims.ask is not None:
+                return {"ask": claims.ask, "owner_command": None, "next_step": "ask"}
+            return attention(
+                "workspace_changed", "Approved proposal differs from its builder receipt.", "build"
+            )
     if previous is not None:
         if previous.error == "HandoffTooLarge":
             return attention(
@@ -155,6 +202,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 if prior_gate and prior_gate.phase == "complete"
                 else (previous.pending_feedback or previous.feedback)
             )
+            if preserved is not None and preserved.source == "owner":
+                preserved = None
             feedback = (
                 preserved
                 or feedback
@@ -174,15 +223,34 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 data=None,
                 fingerprint=ci.fingerprint,
             )
+    sessions = [
+        entry.marker
+        for entry in state.ledger.entries
+        if isinstance(entry.marker, SessionMarker) and entry.marker.role == "builder"
+    ]
+    current = sessions[-1] if sessions else None
     source: BuildSource = "build"
     if feedback is not None:
         source = (
             "ci_fix"
             if feedback.source == "ci"
-            else ("review_fix" if feedback.source == "review" else "gate_fix")
+            else (
+                "review_fix"
+                if feedback.source == "review"
+                else "gate_fix"
+                if feedback.source in {"gate", "no_changes"}
+                else "build"
+            )
         )
+    initial_without_result = (
+        current is not None
+        and current.reason == "initial"
+        and not any(marker.session_id == current.session_id for marker in completed)
+    )
+    if initial_without_result or retry_policy == "rebuild":
+        source = "build"
     publish_source = source
-    if source == "gate_fix" and previous is not None:
+    if source in {"build", "gate_fix"} and previous is not None:
         origin = previous.publish_source or previous.source
         if origin in {"ci_fix", "review_fix"}:
             publish_source = origin
@@ -194,15 +262,12 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         return attention(
             "gate_fix_limit", "The bounded gate/no-change fix allowance is exhausted.", "build"
         )
-    sessions = [
-        entry.marker
-        for entry in state.ledger.entries
-        if isinstance(entry.marker, SessionMarker) and entry.marker.role == "builder"
-    ]
-    current = sessions[-1] if sessions else None
     causes: dict[str, int] = {}
     for session in sessions:
-        if session.cause is not None:
+        if session.cause is not None and any(
+            isinstance(entry.marker, BuildMarker) and entry.marker.session_id == session.session_id
+            for entry in state.ledger.entries
+        ):
             causes[session.cause] = causes.get(session.cause, 0) + 1
     failures = [
         entry.marker.feedback.fingerprint
@@ -254,13 +319,24 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
         )
     fresh_reason = cause if cause is not None and not unused_restart else None
     if retry_code == "harness_session_lost":
-        if causes.get("session_lost", 0) >= 1 + grants.get("harness_session_lost", 0):
+        unused_lost = (
+            current is not None
+            and current.cause == "session_lost"
+            and not any(
+                isinstance(entry.marker, BuildMarker)
+                and entry.marker.session_id == current.session_id
+                for entry in state.ledger.entries
+            )
+        )
+        if not unused_lost and causes.get("session_lost", 0) >= 1 + grants.get(
+            "harness_session_lost", 0
+        ):
             return attention(
                 "harness_session_lost",
                 "The granted fresh session was already used; inspect and retry for one more.",
                 "build",
             )
-        fresh_reason = "session_lost"
+        fresh_reason = None if unused_lost else "session_lost"
     for session_attempt in range(2):
         if current is None or fresh_reason is not None:
             try:
@@ -312,7 +388,7 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             session_id=ref.session_id,
             source=source,
             publish_source=publish_source,
-            pending_feedback=feedback,
+            pending_feedback=feedback if feedback is None or feedback.source != "owner" else None,
             phase="intent",
             command_id=command_id,
             handoff=None,
@@ -326,7 +402,16 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 "local_head_changed", "Local HEAD changed before builder dispatch.", "build"
             )
         await post_once(ctx, number, intent, "Builder dispatch intent.")
-        if fresh_reason is not None or (session_attempt and fresh_reason == "session_lost"):
+        session_completed = any(
+            isinstance(entry.marker, BuildMarker)
+            and entry.marker.session_id == current.session_id
+            and entry.marker.phase == "complete"
+            and entry.marker.handoff is not None
+            for entry in obs.ledger.entries
+        )
+        if not session_completed and current.reason == "initial":
+            turn = render_build_turn(state.issue, state.intake, ctx.repo, state.owner_answer)
+        elif not session_completed or fresh_reason is not None:
             turn = render_restart_turn(
                 state.issue,
                 state.intake.acceptance_criteria,
@@ -398,7 +483,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 "tree_fingerprint": await ctx.workspace.worktree_fingerprint(parent),
             }
         )
-        if len(render_marker(record)) > 59000:
+        fitted = fit_handoff(result, receipt=record)
+        if fitted is None:
             await post_once(
                 ctx,
                 number,
@@ -412,6 +498,8 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 "no second paid turn was dispatched.",
                 "build",
             )
+        result = fitted
+        record = record.model_copy(update={"handoff": result})
         await post_once(ctx, number, record, "Builder handoff retained; claims checked in code.")
         await finish_command(ctx, state, number)
         obs = await observe(ctx, state.pr)

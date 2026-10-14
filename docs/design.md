@@ -224,9 +224,14 @@ Step details:
 - **build.** See §5. A `blocked` or `partial` handoff with open questions → `ask`. An empty diff
   on `done` counts as a gate failure ("no changes").
 - **gate.** Protected paths (config `protected_globs`, default `.github/workflows/**`) changed
-  without exact relative-path tokens in the frozen issue → `ask`. Owner free text does not
-  pre-authorize paths. The question carries exact paths and a content fingerprint; only its
-  authenticated `answer approve` acknowledges that proposal. Content changes re-ask (D-035 R1). Gate commands run on the host in the clone with a
+  without explicit `lgcw-allow: <path>` lines in the frozen issue → `ask`. Each line names one
+  exact relative path outside HTML comments and Markdown code fences. Ordinary mentions,
+  denial sentences and hidden text never pre-authorize paths. The question carries exact paths
+  and a content fingerprint; only its authenticated `answer approve` acknowledges that proposal.
+  Only the latest answered protected-path question counts; a later denial revokes an earlier
+  approval even if old bytes return. An approved proposal still matching its builder receipt
+  proceeds directly to gate without another paid turn. Content changes re-ask (D-035 R2).
+  Gate commands run on the host in the clone with a
   timeout; failure → feedback to `build` with the trimmed output (max `gate_fix_rounds`, default
   2). The same failure fingerprint twice → fresh builder once (§6), then `ask`. Before every
   command, including a retry after an unknown result, content must match the builder receipt. Commands must leave identical content;
@@ -318,7 +323,8 @@ The exhaustive code table is `graph/retry.py`:
 | Ask code | Continuation |
 |---|---|
 | build_unknown, harness_auth, harness_quota, harness_error, node_error | Resume one explicitly authorized turn; preserve pending failure evidence. |
-| handoff_incomplete, protected_path | Resume with clarification; protected permission still requires the exact bound approve answer. |
+| handoff_incomplete | Resume with current clarification; owner feedback is not persisted as pending failure evidence. |
+| protected_path | Exact bound approval of unchanged builder bytes goes directly to gate; denial or changed bytes cannot use an older approval. |
 | gate_fix_limit, no_changes | One additional resumed fix; do not force a competing fresh-restart question. |
 | builder_restart_limit | One fresh builder for the acknowledged continuation; not a reusable global waiver. |
 | harness_session_lost | One fresh session seeded with the handoff and latest owner answer. |
@@ -332,6 +338,15 @@ in the PR. Candidate and dirty tracked work are preserved under local recovery r
 candidate matching the gate, or restore its published parent and rebuild a rejected candidate.
 Untracked files and foreign commits are refused. Unknown reset responses recover the exact clean
 target without resetting again. See D-035 R1.
+
+The selected session's successful handoff history determines prompt kind. Until a session has
+completed a validated handoff, retries reuse its original build/restart prompt with the full
+issue (and handoff for a restart). A fresh session marker without a dispatch is reused and does
+not consume a session-loss grant. Initial-build retries and owner/rebuild continuations remain
+source=build; known auth/quota/session-loss errors do not consume gate-fix allowance. Genuine
+gate/no-change intents and unknown results remain bounded. Owner answers are reconstructed from
+the current authenticated command, never persisted as pending feedback; all prompt kinds apply
+the same trusted owner-instruction suffix while keeping any evidence copy fenced.
 
 ## 7. Review levels and finding rules
 

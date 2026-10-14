@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 
 from lgcw.git.port import CommandResult, PushAuth, WorkspaceInfo
@@ -31,6 +31,7 @@ class RecordingWorkspace(GitWorkspace):
         self.commit_edits: dict[str, str] = {}
         self.command_runs: list[tuple[str, ...]] = []
         self.crash_after: str | None = None
+        self.before_push: Callable[[], Awaitable[None]] | None = None
         self.after_push: Callable[[str], None] | None = None
 
     def _done(self, name: str) -> None:
@@ -69,6 +70,9 @@ class RecordingWorkspace(GitWorkspace):
         *,
         head_sha: str | None = None,
     ) -> str:
+        if self.before_push is not None:
+            callback, self.before_push = self.before_push, None
+            await callback()
         result = await super().push(branch, expected_remote_sha, auth, head_sha=head_sha)
         self.github.branch_heads[(self.repo, branch)] = result
         self.pushes.append(result)

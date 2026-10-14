@@ -77,7 +77,7 @@ async def check_work_claims(
     """Check actual paths and content against the issue or a question-bound owner approval."""
     if state.issue is None:
         raise ValueError("claims require frozen issue")
-    approvals: list[ProtectedApproval] = []
+    approval: ProtectedApproval | None = None
     questions = {
         entry.marker.seq: entry.marker
         for entry in state.ledger.entries
@@ -85,20 +85,22 @@ async def check_work_claims(
     }
     for entry in state.ledger.entries:
         ack = entry.marker
-        if not isinstance(ack, AckMarker) or ack.verb != "answer" or ack.command_snapshot is None:
+        if not isinstance(ack, AckMarker):
             continue
         question = questions.get(ack.seq)
+        if question is None or question.code != "protected_path":
+            continue
+        # Every later answer/retry supersedes the earlier proposal, including a denial.
+        approval = None
         if (
-            question is not None
-            and question.code == "protected_path"
+            ack.verb == "answer"
+            and ack.command_snapshot is not None
+            and ack.command_snapshot.text.strip() == "approve"
             and question.protected_paths
             and question.tree_fingerprint is not None
-            and ack.command_snapshot.text.strip() == "approve"
         ):
-            approvals.append(
-                ProtectedApproval(
-                    paths=question.protected_paths, tree_fingerprint=question.tree_fingerprint
-                )
+            approval = ProtectedApproval(
+                paths=question.protected_paths, tree_fingerprint=question.tree_fingerprint
             )
     return check_claims(
         handoff,
@@ -106,5 +108,5 @@ async def check_work_claims(
         ctx.repo,
         state.issue.body,
         tree_fingerprint=await ctx.workspace.worktree_fingerprint(parent),
-        approval=approvals[-1] if approvals else None,
+        approval=approval,
     )

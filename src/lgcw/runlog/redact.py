@@ -15,8 +15,10 @@ def redact(text: str) -> str:
     )
     text = re.sub(r"(?i)(x-access-token:)[^@\s]+(@)", r"\1[REDACTED]\2", text)
     text = re.sub(
-        r"\b(?:gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{16,}|sk-[A-Za-z0-9_-]{16,})",
+        r"(?:gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{16,}|"
+        r"\bsk-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|"
+        r"sk-(?:proj-|svcacct-)[A-Za-z0-9_-]{16,})",
         "[REDACTED]",
         text,
     )
-    return re.sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[REDACTED]", text)
+    return re.sub(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", "[REDACTED]", text)

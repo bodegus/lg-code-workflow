@@ -214,22 +214,6 @@ async def publish(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
         allowed_heads.add(proposed.head_sha)
     if remote not in allowed_heads or state.pr.head_sha not in allowed_heads:
         return attention("head_moved", "Remote/PR head changed before publication.", "reconcile")
-    if (
-        len(
-            publication_body(
-                state,
-                build.handoff,
-                operation,
-                proposed.head_sha if proposed and proposed.head_sha else "0" * 40,
-            )
-        )
-        > 60000
-    ):
-        return attention(
-            "handoff_too_large",
-            "Canonical PR body exceeds the service bound before any publication effect.",
-            "publish",
-        )
     head = await ctx.workspace.head_sha()
     trailers = {
         "LGCW-Issue": f"{ctx.issue_ref.repo}#{ctx.issue_ref.number}",
@@ -239,7 +223,9 @@ async def publish(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
     # A lost commit response is recovered even when later uncommitted work changed.
     if proposed is not None and proposed.phase == "intent" and head != parent:
         message = await ctx.workspace.commit_message(head)
-        if not all(f"{key}: {value}" in message.splitlines() for key, value in trailers.items()):
+        if not all(
+            f"{key}: {value}" in message.splitlines() for key, value in trailers.items()
+        ) or await ctx.workspace.commit_parents(head) != (parent,):
             return attention(
                 "local_head_changed", "Local commit lacks the exact publication operation.", "build"
             )
@@ -284,7 +270,7 @@ async def publish(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             message = await ctx.workspace.commit_message(head)
             if not all(
                 f"{key}: {value}" in message.splitlines() for key, value in trailers.items()
-            ):
+            ) or await ctx.workspace.commit_parents(head) != (parent,):
                 return attention(
                     "local_head_changed",
                     "Local commit lacks the exact publication operation.",

@@ -22,6 +22,14 @@ class GitResult(Strict):
     code: int
     out: str
     err: str
+    capture_truncated: bool = False
+
+
+class CapturedStream(Strict):
+    """A bounded capture with explicit completeness for machine-readable consumers."""
+
+    text: str
+    truncated: bool
 
 
 def _environment(extra: Mapping[str, str] | None) -> dict[str, str]:
@@ -55,33 +63,40 @@ def _secrets(env: Mapping[str, str]) -> tuple[str, ...]:
 _CAPTURE_BYTES = 65536
 
 
-def _capture(stream: BinaryIO, safe: Callable[[bytes], str], overlap: int) -> str:
+def _capture(stream: BinaryIO, safe: Callable[[bytes], str], overlap: int) -> CapturedStream:
     """Read a bounded snapshot and redact overlapping windows before clipping."""
     descriptor = stream.fileno()
     size = os.fstat(descriptor).st_size
     if size <= _CAPTURE_BYTES:
         encoded = safe(os.pread(descriptor, size, 0)).encode()
         if len(encoded) <= _CAPTURE_BYTES:
-            return encoded.decode()
+            return CapturedStream(text=encoded.decode(), truncated=False)
         marker_bytes = b"\n[... capture truncated after redaction ...]\n"
         head = (_CAPTURE_BYTES - len(marker_bytes)) // 2
         tail = _CAPTURE_BYTES - len(marker_bytes) - head
-        return (
-            encoded[:head].decode(errors="ignore")
-            + marker_bytes.decode()
-            + encoded[-tail:].decode(errors="ignore")
+        return CapturedStream(
+            text=(
+                encoded[:head].decode(errors="ignore")
+                + marker_bytes.decode()
+                + encoded[-tail:].decode(errors="ignore")
+            ),
+            truncated=True,
         )
     marker = f"\n[... capture truncated; original stream {size} bytes ...]\n"
     head = (_CAPTURE_BYTES - len(marker.encode())) // 2
     tail = _CAPTURE_BYTES - len(marker.encode()) - head
     # Positional reads do not move a still-live escaped writer's shared file offset.
     # Overlap keeps a credential straddling either clip boundary whole for redaction.
-    prefix = safe(os.pread(descriptor, head + overlap, 0)).encode()[:head].decode(errors="ignore")
-    start = max(0, size - tail - overlap)
-    suffix = (
-        safe(os.pread(descriptor, size - start, start)).encode()[-tail:].decode(errors="ignore")
-    )
-    return prefix + marker + suffix
+    prefix_bytes = safe(os.pread(descriptor, head + 2 * overlap, 0)).encode()
+    # Shrinking replacements can pull an incomplete outer-boundary credential into
+    # the visible window. Discard the margin in redacted coordinates as well.
+    prefix = prefix_bytes[: max(0, min(head, len(prefix_bytes) - overlap))].decode(errors="ignore")
+    start = max(0, size - tail - 2 * overlap)
+    suffix_bytes = safe(os.pread(descriptor, size - start, start)).encode()
+    if start:
+        suffix_bytes = suffix_bytes[overlap:]
+    suffix = suffix_bytes[-tail:].decode(errors="ignore")
+    return CapturedStream(text=prefix + marker + suffix, truncated=True)
 
 
 async def run_process(
@@ -147,16 +162,17 @@ async def run_process(
         finally:
             # A successful gate must not leave descendants racing subsequent git checks.
             kill()
+        overlap = max((len(secret.encode()) for secret in secrets), default=0) + 1024
+        captured_out, captured_err = (
+            _capture(stdout, safe, overlap),
+            _capture(stderr, safe, overlap),
+        )
         return GitResult(
             argv=argv,
             code=124 if timed_out else process.returncode if process.returncode is not None else 1,
-            out=_capture(
-                stdout, safe, max((len(secret.encode()) for secret in secrets), default=0) + 1024
-            ),
-            err=_capture(
-                stderr, safe, max((len(secret.encode()) for secret in secrets), default=0) + 1024
-            )
-            + ("\nprocess timed out" if timed_out else ""),
+            out=captured_out.text,
+            err=captured_err.text + ("\nprocess timed out" if timed_out else ""),
+            capture_truncated=captured_out.truncated or captured_err.truncated,
         )
 
 

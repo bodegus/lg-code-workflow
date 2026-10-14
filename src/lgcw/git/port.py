@@ -69,6 +69,10 @@ class WorkspacePort(Protocol):
         """Read the local committed head for publish recovery without making another commit."""
         ...
 
+    async def commit_parents(self, head_sha: str) -> tuple[str, ...]:
+        """Read the complete immutable parent list of one commit."""
+        ...
+
     async def commit_message(self, sha: str) -> str:
         """Read an operation trailer for commit-before-receipt recovery."""
         ...
