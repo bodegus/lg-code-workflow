@@ -63,7 +63,7 @@ sequenceDiagram
     Workflow->>GitHub: Read issue, prepare draft PR
 
     loop Build, validate and review until accepted or a limit is reached
-        Workflow->>Builder: Build or fix; resume builder for fixes
+        Workflow->>Builder: Build or fix (resume builder for fixes)
         Builder-->>Workflow: Changes and structured handoff
         Workflow->>Workflow: Check actual changes and protected paths
 
