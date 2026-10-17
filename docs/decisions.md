@@ -1655,3 +1655,30 @@ in619.62s; lint, format and strict mypy pass. No actual oc2 workflow ran.
 R1-F1 qualification: with a minimal launcher environment explicitly setting `TMPDIR=/tmp`,
 the pinned gate passes Ruff and996 tests (1537 warnings,58.44s) on clean oc2 `8dd04fc`.
 The new config regression fails before the pin and passes afterward; no target tests changed.
+
+## D-049 — Wait for post-push PR metadata, without another push
+
+P2 addresses R1-OBS1: all five observed runs saw stale PR metadata immediately after a successful
+exact-lease push. After a new or recovered publication, poll the PR read with fake-clock-backed
+backoff (1, 2, 4, then the remaining 3 seconds; at most10 seconds of waiting). Every observation
+also rechecks the branch ref. Accept only the exact journaled candidate. A changed branch or an
+unrelated PR SHA asks `head_moved` immediately; a PR still naming the parent at the deadline asks
+instead of silently continuing. Never adopt that foreign head or retry the push in this loop.
+Crash recovery still uses the existing commit/push journal and exact remote SHA.
+
+- **Plugin check:** pinned LangGraph1.2.15 `RetryPolicy` (`langgraph/types.py:427`) retries failed
+  node invocations. It cannot express successful-but-stale PR return values or the independent
+  branch-ref safety condition without replaying the whole publication step.
+- **SDK check:** githubkit0.16.1 transport retry policies handle rate limits/server errors, not
+  successful PR/branch value convergence. The adapter deliberately disables auto_retry
+  (`src/lgcw/github/client.py`) and already provides the two typed read methods we need.
+- **Decided:** a thin, bounded read-only loop using existing GitHubPort and Clock; no new package,
+  transport retry policy, graph retry or port method. Existing exact leases, pre-push content
+  assertions and every publication crash test remain unchanged.
+- **Revisit when:** real observations need a different convergence budget. Expiration remains an
+  explicit ask; do not silently extend it or treat a foreign SHA as owned.
+
+Six red-first compiled-graph regressions exercise stale reads, a real competing Git push during
+backoff, and a permanently stale PR, each also losing the first post-push read response. They
+assert one publication push/commit/paid fixture turn, no foreign adoption, no false completion,
+and bounded fake time. No model calls, network or real sleeps are involved.

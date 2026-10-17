@@ -308,13 +308,22 @@ async def publish(state: RunState, runtime: Runtime[RunContext]) -> dict[str, An
             raise ValueError("push response differs from the committed head")
     elif remote != head:
         return attention("head_moved", "Remote head moved at the publication lease.", "reconcile")
-    pr = await ctx.github.get_pr(ctx.issue_ref.repo, state.pr.number)
-    if pr.head_sha != head:
-        return attention(
-            "head_moved",
-            "PR head changed after publication; inspect before continuing.",
-            "reconcile",
-        )
+    started = ctx.clock.now()
+    delay = 1.0
+    while True:
+        pr = await ctx.github.get_pr(ctx.issue_ref.repo, state.pr.number)
+        remote = await ctx.github.branch_head(ctx.issue_ref.repo, state.pr.head_ref)
+        if remote != head or pr.head_sha not in {parent, head}:
+            return attention("head_moved", "Remote/PR head changed after publication.", "reconcile")
+        if pr.head_sha == head:
+            break
+        remaining = 10.0 - (ctx.clock.now() - started).total_seconds()
+        if remaining <= 0:
+            return attention(
+                "head_moved", "PR head did not converge within 10 seconds.", "reconcile"
+            )
+        await ctx.clock.sleep(min(delay, remaining))
+        delay = min(delay * 2, 4.0)
     await post_once(
         ctx,
         pr.number,
