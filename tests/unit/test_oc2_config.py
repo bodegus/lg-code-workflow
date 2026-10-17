@@ -38,6 +38,7 @@ def test_oc2_long_run_protection(path: str, protected: bool) -> None:
 def test_oc2_gate_runs_whole_portable_files_and_keeps_full_native_ci() -> None:
     repo = load_config(ROOT).repo("bodegus/openclaw2-deploy")
     command = next(command for command in repo.gate if "pytest" in command)
+    assert command.startswith('TMPDIR="$(getconf DARWIN_USER_TEMP_DIR)" ')
     args = shlex.split(command)
     targets = {arg for arg in args if arg.startswith("tests/")}
     assert targets

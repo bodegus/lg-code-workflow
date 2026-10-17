@@ -9,7 +9,7 @@ setup = []
 gate = [
   "uvx ruff@0.16.8 check ops tests",
   """\
-uv run --no-project --python 3.12 --with-requirements images/ops/requirements.txt --with pytest --with pytest-xdist python -m pytest -n 4 -p no:cacheprovider \
+TMPDIR="$(getconf DARWIN_USER_TEMP_DIR)" uv run --no-project --python 3.12 --with-requirements images/ops/requirements.txt --with pytest --with pytest-xdist python -m pytest -n 4 -p no:cacheprovider \
     tests/unit/test_agent_content.py \
     tests/unit/test_archive_usage.py \
     tests/unit/test_config_build.py \

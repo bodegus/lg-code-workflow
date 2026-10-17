@@ -1621,7 +1621,11 @@ exactly one short-TMPDIR probe under the fresh instruction; neither was fully gr
 35 failed/537 passed; snapshot_volatile:30 failed/14 passed), with additional shell/storage
 refusals retained in the evidence. They remain **CI-only**, as does every file outside the manifest.
 Do not call either probe green or infer that all their failures were solely socket path limits.
-The sixteen-file gate has no short-TMPDIR prefix because neither candidate qualified for addition.
+Neither candidate qualified for addition. The sixteen-file gate pins `TMPDIR` to
+`getconf DARWIN_USER_TEMP_DIR`: reviewer R1 found that launcher `TMPDIR=/tmp` inherits
+macOS group `wheel` and fails91 setgid/mode cases, while the per-user `staff` root passes996.
+Pinning the root makes the portable gate independent of the launcher; it does not make the
+two excluded files portable.
 The manifest and its baseline are explicit in config; re-baselining is a separate small config PR.
 A read-only live check rejects a missing/renamed file or a truncated GitHub tree inventory.
 
@@ -1647,3 +1651,7 @@ merge, credential, release or deployment authority. Live/after-deploy criteria r
 
 Source qualification: `make check` passes1117 units,7 live deselected,95.34% coverage
 in619.62s; lint, format and strict mypy pass. No actual oc2 workflow ran.
+
+R1-F1 qualification: with a minimal launcher environment explicitly setting `TMPDIR=/tmp`,
+the pinned gate passes Ruff and996 tests (1537 warnings,58.44s) on clean oc2 `8dd04fc`.
+The new config regression fails before the pin and passes afterward; no target tests changed.
