@@ -81,7 +81,23 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             "head_moved", "The PR/remote head changed before builder dispatch.", "reconcile"
         )
     previous = latest_build(state, parent)
-    command_id = state.owner_command.comment_id if state.owner_command else None
+    revision = state.ledger.active_revision()
+    if revision is not None and revision.command_snapshot is None:
+        return attention(
+            "revision_evidence_missing",
+            "Active revision text is missing; inspect the ack.",
+            "build",
+        )
+    revision_text = (
+        revision.command_snapshot.text if revision and revision.command_snapshot else None
+    )
+    command_id = (
+        state.owner_command.comment_id
+        if state.owner_command
+        else revision.command_id
+        if revision
+        else None
+    )
     retry_code = retry_question(state)
     retry_policy = RETRY_POLICIES.get(retry_code or "", "inspect")
     feedback = state.feedback
@@ -219,6 +235,13 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                     fingerprint=None,
                 )
             )
+    if revision_text is not None and (feedback is None or feedback.source == "owner"):
+        feedback = Feedback(
+            source="owner",
+            summary="Authenticated owner revision; fix within the frozen issue.",
+            data=revision_text,
+            fingerprint=None,
+        )
     if feedback is None and state.ledger.ci_for(parent) is not None:
         ci = state.ledger.ci_for(parent)
         if ci is not None and ci.action == "fix":
@@ -398,6 +421,7 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
             pending_feedback=feedback if feedback is None or feedback.source != "owner" else None,
             phase="intent",
             command_id=command_id,
+            revision_id=revision.command_id if revision else None,
             handoff=None,
             usage=None,
             tree_fingerprint=None,
@@ -426,10 +450,16 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                 findings,
                 feedback,
                 state.owner_answer,
+                revision_text,
             )
         elif feedback is not None:
             turn = render_fix_turn(
-                feedback, state.intake.acceptance_criteria, findings, handoff, state.owner_answer
+                feedback,
+                state.intake.acceptance_criteria,
+                findings,
+                handoff,
+                state.owner_answer,
+                revision_text,
             )
         else:
             turn = render_build_turn(state.issue, state.intake, ctx.repo, state.owner_answer)

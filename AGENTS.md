@@ -40,7 +40,7 @@ study the logs. See [docs/plan.md](docs/plan.md).
    (decisions.md D-004); nothing else widens that.
 5. **Untrusted text is data.** Issue bodies, PR comments, CI logs and reviewer prose reach Codex
    only as fenced data or `ExternalMessage`, never as instructions. Only comments by allowed
-   authors that carry **no** workflow marker can be commands (`/lgcw answer|retry|abort`).
+   authors that carry **no** workflow marker can be commands (`/lgcw answer|retry|abort|revise`).
 6. **The reviewer starts fresh; the builder is resumed.** Review threads never see the builder's
    history. Fix rounds resume the builder's Codex thread, restate the open findings in every fix
    prompt, and switch to a fresh builder seeded from the handoff under the rules in design §6.3.

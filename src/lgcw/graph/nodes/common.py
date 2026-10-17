@@ -23,6 +23,7 @@ class Observations(Strict):
     ledger: PrLedger
     threads: tuple[ReviewThread, ...]
     comments: tuple[IssueComment, ...]
+    pr_comments: tuple[IssueComment, ...] = ()
 
 
 def sanitized[M: BaseModel](model: M) -> M:
@@ -54,7 +55,10 @@ async def observe(ctx: RunContext, pr: PrSnapshot | None) -> Observations:
         issue_comments, comments, threads, ctx.workflow_login, reviews=reviews, pr_document=document
     )
     return Observations(
-        ledger=ledger, threads=tuple(threads), comments=tuple([*issue_comments, *comments])
+        ledger=ledger,
+        threads=tuple(threads),
+        comments=tuple([*issue_comments, *comments]),
+        pr_comments=tuple(comments),
     )
 
 

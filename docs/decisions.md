@@ -1682,3 +1682,61 @@ Six red-first compiled-graph regressions exercise stale reads, a real competing 
 backoff, and a permanently stale PR, each also losing the first post-push read response. They
 assert one publication push/commit/paid fixture turn, no foreign adoption, no false completion,
 and bounded fake time. No model calls, network or real sleeps are involved.
+
+## D-050 — Authenticated bounded PR revision, with invalidated readiness
+
+Alex explicitly requested `/lgcw revise <text>` as P3 of issue19 preparation. Accept nonempty
+unmarked commands only from the repo allowlist, on the workflow PR after a recorded non-initial
+publication, at exact-head merge-ready or any current post-publication ask. Ignore issue-thread,
+pre-publication, empty, marker-bearing and non-allowed comments. Do not queue ignored text:
+selection is bounded by the latest ask/ready receipt, so stale feedback cannot revive later.
+Strip only the same blank-separated terminal role signature as the other commands.
+
+An accepted revision writes one existing `ack` with frozen command text/ID and owned head before
+any draft/label/build effect. `seq` is null only for revise without an ask; old ask-bound markers
+remain valid. Count distinct revise ack IDs in the authenticated PR ledger: at most three; the
+fourth writes `revise_limit` and does not dispatch. This is not a retry grant or a local counter.
+No revision grants foreign-head adoption, protected-path approval, credential or merge authority.
+At a head_moved ask with an unowned head it fails closed; the authorized owner must inspect and
+use the existing exact-head adoption path first. An acknowledged head moving before dispatch
+also asks without a turn.
+
+Return the observed PR to draft using githubkit's existing GraphQL capability and remove
+`lgcw:merge-ready` before building. GitHub read-only schema introspection confirmed
+`ConvertPullRequestToDraftInput.pullRequestId: ID!`; no target mutation was used for this check.
+The port/fake mirror the existing mark-ready operation. No dependency or transport helper is
+added. Draft and label writes recover by observed state after response loss, with no duplicate
+conversion. LangGraph continues the existing build/gate/publish/CI/review nodes; no agent routes.
+
+Resume the recorded builder. Feed the frozen revision as code-authenticated `Feedback(source=owner)`
+in a separately labelled owner-feedback fence, retaining current findings and criteria in the
+existing external-JSON block. Fix and context-restart prompts both carry this bounded instruction. Do not
+append revision text as raw prompt instructions or persist it as a generic latest owner answer.
+A completed handoff and command_done receipt recover through gate/publication even if an older
+ready marker still names the parent. Unknown paid dispatches ask; they never replay automatically.
+Every revised head redoes the content-bound gate, leased publication, CI and fresh review before
+readiness. Each accepted revision adds the normal two-review allowance, so the required fresh
+reviews are possible despite earlier completed review rounds; three revisions keep that budget
+bounded. Existing gate/fix/restart and unknown-dispatch rules remain in force.
+
+This uses the existing typed graph, command journal, prompt fencing and SDK; a new command bus,
+agent service or dependency is not needed. Revisit only through a recorded owner decision if
+three revisions, eligibility or review allowance needs to change. Preparation itself executes
+no oc2 workflow or owner command. P3's larger integrated diff was reported on issue19 before
+building (comment6235544195); P1/P2 were independently merged first.
+
+P3 review R1 clarified that revision intent outlives a later retry command ID. Derive an active
+revision from the authenticated ledger until a successful, done, feedback-free BuildMarker is
+explicitly associated with its ack (`revision_id`, backwards-compatible nullable field). Auth,
+quota, session-loss, unknown paid dispatch and explicitly adopted-head continuations retain
+that frozen owner-feedback fence. Resumed builds reconstruct intent themselves, independent of
+which command is latest; gate/CI feedback and current findings remain separate. Readiness stays
+draft/cleared while intent is active, including after owner-authorized adoption. Completed build
+recovery still outranks stale ready/CI facts, including a changed adopted parent. If revision
+text is unavailable, ask instead of producing a revision-less fix turn.
+
+A revise is not protected-path revocation: ignore it in the existing later-command revocation
+set. This includes issue-thread revise, which is ignored entirely. A different protected tree
+still fails the original approval fingerprint and asks naturally; no approval policy is widened.
+R1's nonblocking command/cap/body/mutation observations are recorded in the Hardening backlog,
+not silently implemented here. No target workflow or owner command was run during this fix.

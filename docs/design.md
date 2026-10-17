@@ -91,7 +91,7 @@ comments from human ones.
 | `review` | review | PR | `head_sha`, `level`, `round`, `lenses`, `blocking`, `nonblocking`, `review_id` | a review round |
 | `finding` | review | review thread | `id`, `priority`, `lens`, `head_sha` | one blocking finding |
 | `ask` | ask | issue or PR | `seq`, `step`, `code` | a question to the owner |
-| `ack` | reconcile | issue or PR | `seq`, `command_id`, `verb` | an owner command was applied |
+| `ack` | reconcile | issue or PR | `seq` (nullable for ready revisions), `command_id`, `verb`, frozen command/head | an owner command was applied |
 | `ready` | merge_ready | PR | `head_sha` | merge-ready |
 | `blocked` | blocked | PR or issue | `reason` | terminal stop |
 
@@ -120,13 +120,31 @@ Commits also carry trailers (`Lgcw-Issue: owner/repo#n`, `Lgcw-Round: ci_fix-1`)
 ### 3.3 Owner commands
 
 A comment whose first line starts with `/lgcw` and that carries no marker, written by a login in the
-repo config's `allowed_authors`, after the open question's comment id:
+repo config's `allowed_authors`, after the open question's comment id (or the current
+merge-ready receipt for `revise`):
 
 | Command | Effect |
 |---|---|
 | `/lgcw answer <text>` | continue at the question's step; `<text>` becomes a trusted owner instruction for the next agent turn |
+| `/lgcw revise <text>` | on the workflow PR after publication, at merge-ready or a current ask: resume the builder with fenced authenticated feedback; return to draft, clear readiness, gate/publish/CI/fresh review/ready again; at most three accepted rounds |
 | `/lgcw retry` | continue at the question's step with one additional round granted for its step/code |
 | `/lgcw abort` | stop: `blocked` marker, `lgcw:blocked` label, draft PR kept |
+
+`revise` requires nonempty text and a recorded non-initial workflow publication. Before that,
+or on the issue conversation instead of the PR, it is ignored and never queued. Only commands
+after the current ask/ready receipt are eligible; a request posted while an earlier revision is
+active cannot revive after a newer ready receipt. Terminal role signatures are metadata as for
+other commands. A frozen revise ack binds command text/ID and the current owned head; its `seq`
+is null when no ask exists. Three distinct accepted revise acks exhaust the per-PR allowance;
+a fourth asks `revise_limit` without dispatching. Revision grants no head adoption or protected-path
+approval. An unowned head must be inspected/adopted separately through the existing owner retry.
+The draft/label writes recover by observation; the old ready receipt cannot terminate an unfinished
+revision. Active revision intent is reconstructed independently of the latest command ack, until
+a successful done BuildMarker associated by revision_id (or the original command_id) exists.
+Retries after unknown dispatch, quota/auth/session loss or explicit head adoption keep its frozen
+fenced text and draft/readiness invalidation. Revise is never an approval-revocation command;
+a different protected tree still needs its own fingerprint-bound approval. Paid dispatch uncertainty still asks rather than replaying. Each accepted revision adds
+the normal two-review allowance, bounded by the three-revision cap (D-050).
 
 Each applied command gets an `ack` marker, so it is applied once. `LedgerCounts.retry_grants`
 joins retry acknowledgements to prior `ask(seq)` facts by step/code; duplicate command IDs do
@@ -147,7 +165,9 @@ bodies. Submitted review facts use their own namespace and require matching auth
    `command_done` prevents replay. A newer pending question takes precedence. A continuation
    targeting reconcile completes its command before selecting the next step from fresh facts;
    it never returns directly to the same unfinished acknowledgement.
-3. `ready` for the current head → end (`merge_ready`).
+3. An eligible PR `revise` command takes the bounded draft/build continuation above; an
+   unfinished accepted revision outranks an older ready receipt. Otherwise `ready` for the
+   current head → end (`merge_ready`).
 4. PR head ≠ the last `push` head → `ask` ("head moved"); `/lgcw retry` adopts the new head with a
    `push` marker of source `human`.
 5. An open PR without a push receipt → idempotent `open_pr` recovery, which verifies its initial
@@ -353,6 +373,7 @@ The exhaustive code table is `graph/retry.py`:
 | Ask code | Continuation |
 |---|---|
 | build_unknown, harness_auth, harness_quota, harness_error, node_error | Resume one explicitly authorized turn; preserve pending failure evidence. |
+| revision_evidence_missing | Inspect missing authenticated revision evidence; retry cannot dispatch without its frozen text. |
 | handoff_incomplete | Resume with current clarification; owner feedback is not persisted as pending failure evidence. |
 | protected_path | Exact bound approval of unchanged builder bytes goes directly to gate; denial or changed bytes cannot use an older approval. |
 | gate_fix_limit, no_changes | One additional resumed fix; do not force a competing fresh-restart question. |

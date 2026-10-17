@@ -8,6 +8,7 @@ from lgcw.models.issue import IssueSnapshot
 from lgcw.models.ledger import (
     AckMarker,
     AskMarker,
+    BuildMarker,
     Command,
     FindingMarker,
     PrLedger,
@@ -58,6 +59,65 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
     if ledger.latest("blocked") is not None:
         return route("end", "blocked")
     pending = ledger.pending_ask()
+    ready = ledger.latest("ready")
+    revisions = [
+        entry
+        for entry in ledger.of_kind("ack")
+        if isinstance(entry.marker, AckMarker) and entry.marker.verb == "revise"
+    ]
+    acknowledged = {
+        entry.marker.command_id
+        for entry in ledger.of_kind("ack")
+        if isinstance(entry.marker, AckMarker)
+    }
+    published = any(
+        isinstance(entry.marker, PushMarker) and entry.marker.source not in {"initial", "human"}
+        for entry in ledger.entries
+    )
+    anchor = pending or (
+        ready
+        if ready is not None
+        and isinstance(ready.marker, ReadyMarker)
+        and pr is not None
+        and ready.marker.head_sha == pr.head_sha
+        and (not revisions or ready.comment_id > revisions[-1].comment_id)
+        else None
+    )
+    revision = (
+        next(
+            (
+                command
+                for command in sorted(view.commands, key=lambda item: item.comment_id)
+                if (command.verb == "revise" or pending is not None)
+                and anchor is not None
+                and command.comment_id > anchor.comment_id
+                and command.comment_id not in acknowledged
+            ),
+            None,
+        )
+        if published and pr is not None
+        else None
+    )
+    if revision is not None and revision.verb == "revise":
+        if (
+            len(
+                {
+                    entry.marker.command_id
+                    for entry in revisions
+                    if isinstance(entry.marker, AckMarker)
+                }
+            )
+            >= 3
+        ):
+            return ask(
+                "revise_limit", "Three owner revision rounds exhausted; inspect or narrow scope."
+            )
+        push = ledger.last_push()
+        if push is None or pr is None or pr.head_sha != push.head_sha:
+            return ask(
+                "head_moved", "Revision cannot adopt an unowned head; inspect and retry first."
+            )
+        return route("build", "owner revision", revision)
     if pending is not None and isinstance(pending.marker, AskMarker):
         acknowledged = {
             entry.marker.command_id
@@ -68,7 +128,9 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
             (
                 item
                 for item in sorted(view.commands, key=lambda item: item.comment_id)
-                if item.comment_id > pending.comment_id and item.comment_id not in acknowledged
+                if item.verb != "revise"
+                and item.comment_id > pending.comment_id
+                and item.comment_id not in acknowledged
             ),
             None,
         )
@@ -107,6 +169,18 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
             "head_moved",
             "The PR head changed outside the workflow. Retry to adopt the current head.",
         )
+    if revisions and isinstance(revisions[-1].marker, AckMarker):
+        revision_ack = revisions[-1].marker
+        related_build = any(
+            isinstance(entry.marker, BuildMarker)
+            and revision_ack.command_id in {entry.marker.command_id, entry.marker.revision_id}
+            and entry.marker.parent_sha == pr.head_sha
+            for entry in ledger.entries
+        )
+        if (revision_ack.head_sha == pr.head_sha or related_build) and (
+            ready is None or revisions[-1].comment_id > ready.comment_id
+        ):
+            return route("build", "recover owner revision before stale readiness")
     ready = ledger.latest("ready")
     if (
         ready is not None

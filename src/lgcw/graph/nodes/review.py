@@ -14,7 +14,7 @@ from lgcw.harness.errors import HarnessError
 from lgcw.harness.prompts import ReviewPacket, fence, render_review_turn
 from lgcw.ledger.markers import fingerprint
 from lgcw.models.harness import SessionSpec
-from lgcw.models.ledger import BuildMarker, FeedbackMarker, ReviewMarker, SessionMarker
+from lgcw.models.ledger import AckMarker, BuildMarker, FeedbackMarker, ReviewMarker, SessionMarker
 from lgcw.models.review import GateResult, LensVerdict, LevelDecision, ReviewVerdict
 from lgcw.models.state import Feedback, RunState
 from lgcw.review.diffstat import parse_numstat
@@ -265,7 +265,17 @@ def _attempts(state: RunState) -> int:
 
 def _cap(state: RunState) -> int:
     grants = state.ledger.counts().retry_grants.get("review", {})
-    return 2 + grants.get("review_round_limit", 0) + grants.get("review_unknown", 0)
+    revisions = {
+        entry.marker.command_id
+        for entry in state.ledger.of_kind("ack")
+        if isinstance(entry.marker, AckMarker) and entry.marker.verb == "revise"
+    }
+    return (
+        2
+        + 2 * len(revisions)
+        + grants.get("review_round_limit", 0)
+        + grants.get("review_unknown", 0)
+    )
 
 
 async def _finish(state: RunState, ctx: RunContext, marker: ReviewMarker) -> dict[str, Any]:

@@ -93,12 +93,13 @@ async def check_work_claims(
             entry.marker
             for entry in reversed(observations.ledger.entries)
             if isinstance(entry.marker, AckMarker)
+            and entry.marker.seq is not None
             and entry.marker.seq in questions
             and questions[entry.marker.seq].code == "protected_path"
         ),
         None,
     )
-    if latest is not None:
+    if latest is not None and latest.seq is not None:
         question = questions[latest.seq]
         if (
             latest.verb == "answer"
@@ -114,9 +115,13 @@ async def check_work_claims(
             approved_ack = latest
     revocation = None
     if approved_ack is not None:
-        later = owner_commands(
-            observations.comments, ctx.repo.allowed_authors, approved_ack.command_id
-        )
+        later = [
+            command
+            for command in owner_commands(
+                observations.comments, ctx.repo.allowed_authors, approved_ack.command_id
+            )
+            if command.verb != "revise"
+        ]
         if later:
             command = next((command for command in later if command.verb == "abort"), later[-1])
             revocation = ApprovalRevocation(seq=approved_ack.seq, command=sanitized(command))

@@ -11,6 +11,7 @@ from lgcw.graph.context import RunContext
 from lgcw.graph.nodes.common import attention, finish_command, labels, observe, post_once, sanitized
 from lgcw.graph.reconcile import ReconcileView, next_step
 from lgcw.ledger.commands import owner_commands
+from lgcw.models.github import PrSnapshot
 from lgcw.models.issue import IntakeResult
 from lgcw.models.ledger import (
     AckMarker,
@@ -20,7 +21,7 @@ from lgcw.models.ledger import (
     IntakeMarker,
     RunMarker,
 )
-from lgcw.models.state import RunState
+from lgcw.models.state import Feedback, RunState
 
 
 def latest_owner_answer(run: RunMarker | None, acks: Sequence[AckMarker]) -> str | None:
@@ -33,6 +34,40 @@ def latest_owner_answer(run: RunMarker | None, acks: Sequence[AckMarker]) -> str
         ),
         run.owner_answer if run else None,
     )
+
+
+async def resume_revision(
+    ctx: RunContext, pr: PrSnapshot | None, *, waiting: bool = False
+) -> dict[str, Any] | None:
+    """Keep accepted intent draft and recover it independently of a later retry ack."""
+    if pr is None:
+        return None
+    obs = await observe(ctx, pr)
+    revision = obs.ledger.active_revision()
+    if revision is None:
+        return None
+    if revision.command_snapshot is None:
+        return attention(
+            "revision_evidence_missing",
+            "Active revision text is missing; inspect the ack.",
+            "reconcile",
+        )
+    current = await ctx.github.get_pr(ctx.issue_ref.repo, pr.number)
+    if not current.is_draft:
+        await ctx.github.mark_draft(pr.node_id)
+    await labels(ctx, pr.number, (), ("lgcw:merge-ready",))
+    if waiting:
+        return {}
+    push = obs.ledger.last_push()
+    if (
+        push is None
+        or current.head_sha != push.head_sha
+        or await ctx.github.branch_head(ctx.issue_ref.repo, pr.head_ref) != push.head_sha
+    ):
+        return attention(
+            "head_moved", "Active revision requires the current owned head.", "reconcile"
+        )
+    return {"next_step": "build"}
 
 
 async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
@@ -71,7 +106,12 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
         ),
         owner_answer=answer,
     )
-    commands = owner_commands(obs.comments, ctx.repo.allowed_authors, after_comment_id=0)
+    pr_ids = {comment.id for comment in obs.pr_comments}
+    commands = [
+        command
+        for command in owner_commands(obs.comments, ctx.repo.allowed_authors, after_comment_id=0)
+        if command.verb != "revise" or command.comment_id in pr_ids
+    ]
     outcome = next_step(
         ReconcileView(
             issue=current, pr=pr, ledger=obs.ledger, threads=obs.threads, commands=tuple(commands)
@@ -88,18 +128,25 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
     ack: AckMarker | None
     if outcome.command is not None:
         pending = obs.ledger.pending_ask()
-        if pending is None or not isinstance(pending.marker, AskMarker):
+        if (
+            pending is None or not isinstance(pending.marker, AskMarker)
+        ) and outcome.command.verb != "revise":
             raise ValueError("command has no authoritative question")
         command = sanitized(outcome.command)
         ack = AckMarker(
-            seq=pending.marker.seq,
+            seq=pending.marker.seq if pending and isinstance(pending.marker, AskMarker) else None,
             command_id=command.comment_id,
             verb=command.verb,
             step=outcome.step,
             command_snapshot=command,
             adopt=outcome.adopt,
+            head_sha=pr.head_sha if command.verb == "revise" and pr else None,
         )
-        target = pr.number if pending.where == "pr" and pr else ctx.issue_ref.number
+        target = (
+            pr.number
+            if pr and (command.verb == "revise" or (pending and pending.where == "pr"))
+            else ctx.issue_ref.number
+        )
         await post_once(ctx, target, ack, "Owner command acknowledged.")
     else:
         done = {
@@ -120,6 +167,30 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
         fields.update(owner_command=command)
         if command.verb == "answer":
             fields["owner_answer"] = command.text
+        if command.verb == "revise":
+            if pr is None:
+                raise ValueError("revision requires a PR")
+            revised_pr = await ctx.github.get_pr(ctx.issue_ref.repo, pr.number)
+            if not revised_pr.is_draft:
+                await ctx.github.mark_draft(pr.node_id)
+            await labels(ctx, pr.number, (), ("lgcw:merge-ready",))
+            if (
+                revised_pr.head_sha != ack.head_sha
+                or await ctx.github.branch_head(ctx.issue_ref.repo, pr.head_ref) != ack.head_sha
+            ):
+                return fields | attention(
+                    "head_moved", "Head changed after revision acknowledgement.", "reconcile"
+                )
+            fields.update(
+                owner_answer=None,
+                feedback=Feedback(
+                    source="owner",
+                    summary="Authenticated owner revision; fix within the frozen issue.",
+                    data=command.text,
+                    fingerprint=None,
+                ),
+            )
+            await labels(ctx, pr.number, ("lgcw:active",), ("lgcw:waiting", "lgcw:merge-ready"))
         if command.verb != "abort" and pr is not None:
             await labels(ctx, pr.number, ("lgcw:active",), ("lgcw:waiting",))
         if ack.adopt is not None:
@@ -142,7 +213,8 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
             await finish_command(ctx, continuation, number)
             fields["owner_command"] = None
         if ack.step != "reconcile":
-            return fields | {"next_step": ack.step}
+            revision = await resume_revision(ctx, pr) if command.verb != "abort" else None
+            return fields | (revision or {"next_step": ack.step})
         continuation = RunState.model_validate(state.model_dump() | fields)
         await finish_command(ctx, continuation, number)
         fields["owner_command"] = None
@@ -151,6 +223,9 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
         outcome = next_step(
             ReconcileView(issue=current, pr=pr, ledger=obs.ledger, threads=obs.threads, commands=())
         )
+    revision = await resume_revision(ctx, pr, waiting=outcome.reason == "waiting")
+    if revision:
+        return fields | revision
     if outcome.reason == "waiting":
         await labels(ctx, number, ("lgcw:waiting",), ("lgcw:active", "lgcw:merge-ready"))
         return fields | {"next_step": "end", "outcome": "waiting"}
