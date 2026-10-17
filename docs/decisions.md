@@ -1589,3 +1589,61 @@ base-instruction-parent refusal. Every existing assertion, fixture and timeout s
 Qualification: all60 focused subprocess/capture/workspace cases pass (25.38s); full
 `make check` passes1106 units,6 live deselected,95.34% coverage in539.77s. Lint, format and
 strict mypy pass. No live controller or paid turn ran from this unmerged source.
+
+## D-048 — OC2 planning docs and portable local/full native CI verification
+
+Alex's decision, relayed in
+[issue9/comment6233346120](https://github.com/bodegus/lg-code-workflow/issues/9#issuecomment-6233346120):
+
+> "I want to have fewer restrictions. I think we can allow the PLAN.md to be modified;
+> it's not fully relevant once we stick with issue work."
+
+Remove only `PLAN.md` from the openclaw2-deploy protected globs. All other instruction, workflow,
+lock and environment protections remain. Ten path-policy cases prove this target-specific
+planning exception and the retained protection categories; no broader protected-path permission
+or issue-scope change is implied.
+
+The [reviewer decision6233734990](https://github.com/bodegus/lg-code-workflow/issues/19#issuecomment-6233734990)
+and [fresh bounded instruction6233787042](https://github.com/bodegus/lg-code-workflow/issues/19#issuecomment-6233787042)
+qualify **portable subset locally, full suite in required CI**. CI `unit` runs `sh ops/ci.sh unit`,
+whose inner command is `python -m pytest -n 4 -p no:cacheprovider tests/unit` in the locked Linux
+AMD64 ops image with read-only source and no network or Docker socket. The local gate keeps
+those pytest parallel/cache settings but names sixteen complete, measured portable unit files;
+pinned `uvx ruff@0.16.8 check ops tests` runs first. All three required CI identities remain,
+including CI/unit; a unit regression refuses removal of that full-suite CI requirement. There are no
+per-test filters, added skips, assertion/timeout changes, exclusions or flaky patterns.
+
+The inventory was derived from a whole-file JUnit probe on clean target `e61b5f1`: the sixteen
+listed files completed entirely green, covering config-build, login, instruction contracts,
+smoke checks, issue writing/inspection, status, retention and snapshots. The probe's other two
+files (`test_doctor.py`, `test_snapshot_volatile.py`) had AF_UNIX path-limit errors. Each received
+exactly one short-TMPDIR probe under the fresh instruction; neither was fully green (doctor:
+35 failed/537 passed; snapshot_volatile:30 failed/14 passed), with additional shell/storage
+refusals retained in the evidence. They remain **CI-only**, as does every file outside the manifest.
+Do not call either probe green or infer that all their failures were solely socket path limits.
+The sixteen-file gate has no short-TMPDIR prefix because neither candidate qualified for addition.
+The manifest and its baseline are explicit in config; re-baselining is a separate small config PR.
+A read-only live check rejects a missing/renamed file or a truncated GitHub tree inventory.
+
+Full Darwin unit-suite execution is not a usable local gate: two measurements hit the identical
+xdist worker-state assertion in
+`test_recovery_source_links.py::test_source_link_reads_only_literal_target_with_no_open_or_follow`.
+The default-root run ended152 failed/3595 passed/102 errors in55.82s; the short-root run ended
+342 failed/3027 passed/55 errors in50.52s. The executor stopped and recorded exact outputs before
+receiving the bounded instruction above. No third full-suite run occurred. Pulling the locked
+ops image returned `manifest unknown`; no credentials were created and no native CI architecture
+check was bypassed. This PR does not fix or weaken target filesystem/xdist assertions.
+
+After PR280 merged, the clean target checkout fast-forwarded to `8dd04fc` before running the
+configured sixteen-file gate: Ruff passes and all996 tests pass (1537 warnings,50.58s), both exit0. The read-only inventory test verifies all16 files exist on that main SHA (1 passed,0.68s). Native full-suite CI remains the authoritative coverage of
+non-portable and newly added files. Python3.12 remains selected: issue157 explicitly keeps dual
+3.12/3.13 wheel hashes until the new images ship; changing the lgcw interpreter is a later,
+reviewer/owner-coordinated config update, not an early part of this preparation.
+
+[Tracking issue19](https://github.com/bodegus/lg-code-workflow/issues/19) records Alex's amended
+eight-issue order and all pure criteria previews; Alex deferred issue157. P1, P2 convergence and P3 revise must independently
+merge in order, then wait for a separate Alex go. This task starts no oc2 run and grants no
+merge, credential, release or deployment authority. Live/after-deploy criteria remain separate.
+
+Source qualification: `make check` passes1117 units,7 live deselected,95.34% coverage
+in619.62s; lint, format and strict mypy pass. No actual oc2 workflow ran.

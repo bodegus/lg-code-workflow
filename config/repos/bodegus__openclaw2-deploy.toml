@@ -3,9 +3,30 @@ default_branch = "main"
 allowed_authors = ["bodegus"]
 # Each gate command provisions its own pinned tooling through uv; no project setup.
 setup = []
+# Portable whole-file inventory selected on oc2 e61b5f107f902041f75adc2d3990eb1d1634940b.
+# Portable subset locally; required CI unit (Linux) is the full authority.
+# Requalified on oc2 main 8dd04fcb7ab574d257b0e6b1c2d681a9e3d8444a.
 gate = [
-  "uv run --no-project --python 3.12 --with-requirements images/ops/requirements.txt --with pytest --with pytest-xdist python -m pytest -q -p no:cacheprovider -n 4 tests/unit/test_github_issue_write.py tests/unit/test_task_mcp.py",
   "uvx ruff@0.16.8 check ops tests",
+  """\
+uv run --no-project --python 3.12 --with-requirements images/ops/requirements.txt --with pytest --with pytest-xdist python -m pytest -n 4 -p no:cacheprovider \
+    tests/unit/test_agent_content.py \
+    tests/unit/test_archive_usage.py \
+    tests/unit/test_config_build.py \
+    tests/unit/test_doctor_lint.py \
+    tests/unit/test_github_inspect.py \
+    tests/unit/test_github_issue_write.py \
+    tests/unit/test_login.py \
+    tests/unit/test_main_contract.py \
+    tests/unit/test_provenance.py \
+    tests/unit/test_retention.py \
+    tests/unit/test_retention_growth.py \
+    tests/unit/test_role_soul.py \
+    tests/unit/test_smoke_live.py \
+    tests/unit/test_snapshot.py \
+    tests/unit/test_status.py \
+    tests/unit/test_task_mcp.py
+""",
 ]
 # Native acceptance scope=all is an additional reviewer-owned merge gate.
 required_checks = [
@@ -14,7 +35,7 @@ required_checks = [
   { workflow = "CI", job = "unit" },
 ]
 protected_globs = [
-  ".github/**", "AGENTS.md", "CLAUDE.md", "PLAN.md", "versions.lock.json", "agents/**",
+  ".github/**", "AGENTS.md", "CLAUDE.md", "versions.lock.json", "agents/**",
   ".agents/**", ".claude/**", ".codex/**", ".env*",
 ]
 excluded_globs = []
