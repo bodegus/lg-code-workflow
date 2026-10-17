@@ -1446,3 +1446,37 @@ coverage (741.71s). No real harness or family-calendar CLI ran from this unmerge
   proposal; residual transitive-lock data provenance and actual Dependabot security-patch behavior
   are explicitly unqualified follow-ups. Target PR31 remains owner-controlled; hosted no-token
   execution waits for main, and credentialed publication is separate.
+
+
+## D-044 — Owner-delegated openclaw2-deploy#276 target and verification boundary
+
+Alex explicitly delegates execution of that one issue, after a separate target-config PR is
+reviewed and merged here. The target gates are exactly the requested Python3.12 uv-provisioned
+whole test files (`test_github_issue_write.py`, `test_task_mcp.py`, xdist4, no cacheprovider) and
+`uvx ruff@0.16.8 check ops tests`; setup is empty. Required identities CI/lint, CI/validate and
+CI/unit match the target's current workflow. Protection/source/test/doc/risk globs follow the
+owner's specification. No exclusions or known flaky patterns are introduced; pre-existing failure
+policy retains the existing model's `note` setting. Python is selected per command through uv;
+doctor checks uv/uvx availability rather than requiring the host interpreter itself to be3.12.
+No runtime dependency or harness implementation change is included.
+
+The outer builder does not implement the target patch. Merged lgcw graph code owns intake,
+workspace, builder, gate, publication, CI and fresh review. Target scope is the two ops modules
+and tests; argument refusals expose names only, descriptions spell out per-operation arguments,
+and the target PR records its optional-title decision. Journal/request_id semantics stay intact.
+The target reviewer separately dispatches native acceptance(scope=all) and requires its first
+attempt to pass on the exact merge-ready head before merging. That acceptance is deliberately
+outside lgcw's three configured required jobs. The final live ledger step after merge/release
+also belongs to the target reviewer. No owner-answer, protected approval, abort, merge, release,
+deployment, credential or ledger-write authority is inferred from this execution delegation.
+Existing narrow verified-transient/head_moved retry policy remains binding, with evidence first.
+
+Preflight on the unmodified issue finds five criteria: three checkbox items, the post-release
+paragraph and the reviewer signature. The owner explicitly expects three. Preserve that issue
+as the test input and repair checkbox-section extraction in a separate tested/merged PR before
+any paid target run; this config PR records the finding and does not hide a parser change.
+
+Local config qualification: `uv run lgcw doctor --repo bodegus/openclaw2-deploy` passes all
+checks (gh/git/uv/uvx, owner login, sandbox login denial and dedicated Codex login). Full
+`make check` passes1092 units,6 live deselected,95.33% coverage in535.01s. Real CI specimen
+38967800886 reports lint,validate,unit all successful. No paid target turn has started.
