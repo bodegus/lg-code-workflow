@@ -219,6 +219,13 @@ async def build(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]
                     fingerprint=None,
                 )
             )
+    if state.owner_command is not None and state.owner_command.verb == "revise":
+        feedback = Feedback(
+            source="owner",
+            summary="Authenticated owner revision; fix within the frozen issue.",
+            data=state.owner_command.text,
+            fingerprint=None,
+        )
     if feedback is None and state.ledger.ci_for(parent) is not None:
         ci = state.ledger.ci_for(parent)
         if ci is not None and ci.action == "fix":

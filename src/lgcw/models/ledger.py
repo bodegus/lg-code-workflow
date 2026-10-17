@@ -19,7 +19,7 @@ from lgcw.models.review import GatedFinding, GateResult, Lens, ReviewLevel
 class Command(Strict):
     """An authorized owner command without a workflow marker."""
 
-    verb: Literal["answer", "retry", "abort"]
+    verb: Literal["answer", "retry", "abort", "revise"]
     text: str
     comment_id: int
     author: str
@@ -295,16 +295,21 @@ class AckMarker(Strict):
     """An owner command applied exactly once."""
 
     kind: Literal["ack"] = "ack"
-    seq: int = Field(ge=1)
+    seq: int | None = Field(ge=1)
     command_id: int
-    verb: Literal["answer", "retry", "abort"]
+    verb: Literal["answer", "retry", "abort", "revise"]
     step: Step | None = None
     command_snapshot: Command | None = None
     adopt: PushMarker | None = None
+    head_sha: str | None = None
 
     @model_validator(mode="after")
     def consistent_command(self) -> Self:
         """Reject a snapshot differing from the acknowledged command identity."""
+        if self.verb == "revise" and (self.head_sha is None or self.command_snapshot is None):
+            raise ValueError("revise acknowledgement needs frozen command and head")
+        if self.seq is None and self.verb != "revise":
+            raise ValueError("only revise may acknowledge without a question")
         if self.command_snapshot is not None and (
             self.command_snapshot.comment_id != self.command_id
             or self.command_snapshot.verb != self.verb
@@ -391,7 +396,7 @@ class PrLedger(Strict):
         acknowledged: set[int] = set()
         for entry in reversed(self.entries):
             marker = entry.marker
-            if isinstance(marker, AckMarker):
+            if isinstance(marker, AckMarker) and marker.seq is not None:
                 acknowledged.add(marker.seq)
             elif isinstance(marker, AskMarker) and marker.seq not in acknowledged:
                 acknowledged.update(marker.supersedes)
@@ -441,6 +446,7 @@ class PrLedger(Strict):
                 and marker.verb == "retry"
                 and marker.command_id not in granted_commands
                 and marker.seq not in granted_questions
+                and marker.seq is not None
                 and marker.seq in questions
             ):
                 question = questions[marker.seq]

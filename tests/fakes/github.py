@@ -275,6 +275,16 @@ class FakeGitHub(GitHubPort):
             self.issues[key] = issue.model_copy(update={"labels": labels})
         self._finish("set_labels")
 
+    async def mark_draft(self, pr_node_id: str) -> None:
+        """Observe draft state, including response-loss after the effect."""
+        self._record("mark_draft", pr_node_id=pr_node_id)
+        for key, pr in self.prs.items():
+            if pr.node_id == pr_node_id:
+                self.prs[key] = pr.model_copy(update={"is_draft": True})
+                self._finish("mark_draft")
+                return
+        raise KeyError(pr_node_id)
+
     async def mark_ready(self, pr_node_id: str) -> None:
         """Transition one known draft without merging it."""
         self._record("mark_ready", pr_node_id=pr_node_id)

@@ -63,12 +63,20 @@ def fence(data: str, label: str) -> str:
 
 
 def _turn(
-    template: str, skill: str, data: dict[str, object], owner: str | None = None
+    template: str,
+    skill: str,
+    data: dict[str, object],
+    owner: str | None = None,
+    owner_feedback: str | None = None,
 ) -> TurnInput:
     encoded = json.dumps(data, ensure_ascii=True, indent=2, sort_keys=True)
     text = _TEMPLATES[template].rstrip() + "\n\n" + fence(encoded, "external-json")
     if owner is not None:
         text += "\n\nAuthenticated owner instruction:\n" + owner
+    if owner_feedback is not None:
+        text += "\n\nAuthenticated owner instruction (within the frozen issue):\n" + fence(
+            owner_feedback, "owner-feedback"
+        )
     return TurnInput(skill=str(skill_path(skill)), text=text, data=None, data_label=None)
 
 
@@ -106,6 +114,7 @@ def render_fix_turn(
             "previous_handoff": handoff.model_dump(mode="json") if handoff else None,
         },
         owner_answer,
+        feedback.data if feedback.source == "owner" else None,
     )
 
 
@@ -130,6 +139,7 @@ def render_restart_turn(
             "owner_answer": owner_answer,
         },
         owner_answer,
+        feedback.data if feedback is not None and feedback.source == "owner" else None,
     )
 
 

@@ -691,6 +691,15 @@ class GitHubClient(GitHubPort):
                     if error.response.status_code != 404:
                         raise
 
+    async def mark_draft(self, pr_node_id: str) -> None:
+        """Invalidate review readiness without changing the PR head or merging."""
+        async with self._mutation():
+            await self._sdk().async_graphql(
+                "mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id})"
+                "{pullRequest{id isDraft}}}",
+                {"id": pr_node_id},
+            )
+
     async def mark_ready(self, pr_node_id: str) -> None:
         """Leave draft without approving or merging the PR."""
         async with self._mutation():

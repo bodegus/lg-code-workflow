@@ -98,6 +98,10 @@ class GitHubPort(Protocol):
         """Add and remove only the specified labels."""
         ...
 
+    async def mark_draft(self, pr_node_id: str) -> None:
+        """Return an owned PR to draft without changing its head."""
+        ...
+
     async def mark_ready(self, pr_node_id: str) -> None:
         """Transition a draft PR to ready for review without merging it."""
         ...

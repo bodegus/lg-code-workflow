@@ -10,17 +10,17 @@ from lgcw.models.github import IssueComment
 from lgcw.models.ledger import Command
 
 
-def parse_command(body: str) -> tuple[Literal["answer", "retry", "abort"], str] | None:
+def parse_command(body: str) -> tuple[Literal["answer", "retry", "abort", "revise"], str] | None:
     """Parse the first-line command, excluding a blank-separated terminal role signature."""
     lines = body.splitlines()
     first = next(((index, line.strip()) for index, line in enumerate(lines) if line.strip()), None)
     if first is None:
         return None
     index, line = first
-    match = re.fullmatch(r"/lgcw\s+(answer|retry|abort)(?:[ \t]+(.*))?", line)
+    match = re.fullmatch(r"/lgcw\s+(answer|retry|abort|revise)(?:[ \t]+(.*))?", line)
     if match is None:
         return None
-    verb = cast(Literal["answer", "retry", "abort"], match.group(1))
+    verb = cast(Literal["answer", "retry", "abort", "revise"], match.group(1))
     last = next(index for index in range(len(lines) - 1, -1, -1) if lines[index].strip())
     if (
         last >= index + 2
@@ -29,7 +29,7 @@ def parse_command(body: str) -> tuple[Literal["answer", "retry", "abort"], str] 
     ):
         lines = lines[:last]
     text = "\n".join([match.group(2) or "", *lines[index + 1 :]]).strip()
-    return verb, text
+    return None if verb == "revise" and not text else (verb, text)
 
 
 def owner_commands(

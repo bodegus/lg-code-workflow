@@ -122,3 +122,10 @@ def test_owner_command_order_and_question_boundary() -> None:
         (3, "answer", "yes"),
         (4, "abort", ""),
     ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("signature", ["-builder", "-reviewer", "-owner"])
+def test_revise_signature_stripped_and_empty_rejected(signature: str) -> None:
+    assert parse_command(f"/lgcw revise use cedar\n\n{signature}") == ("revise", "use cedar")
+    assert parse_command(f"/lgcw revise\n\n{signature}") is None
