@@ -221,8 +221,12 @@ Step details:
 
 - **intake.** Reject a closed issue, a pull request, or an issue whose author is not in
   `allowed_authors`. Acceptance criteria: the non-empty section under a heading matching
-  `acceptance criteria|done when|definition of done|expected` (case-insensitive), else every
-  `- [ ]` checklist item, else incomplete → `ask` on the issue. The issue is snapshotted (title,
+  `acceptance criteria|done when|definition of done|expected` (case-insensitive). Within that
+  section, explicit checkbox items (checked or unchecked) take precedence over ordinary bullets
+  and prose. Consecutive wrapped lines belong to their checkbox until a blank line, list item or
+  heading; separate notes and signatures are excluded. A section without checkboxes retains its
+  bullets, numbered items and paragraphs. If no named section is non-empty, use every `- [ ]`
+  checklist item, else incomplete → `ask` on the issue (D-045). The issue is snapshotted (title,
   body, `updated_at`); `merge_ready` notes it if the issue changed later.
 - **open_pr.** Code-only token provider supplies ephemeral GIT_CONFIG environment authentication
   to private fetches (D-025), never a URL or persisted config. Bare mirror fetch, `git clone --local` per issue, branch `lgcw/issue-<n>` from the
