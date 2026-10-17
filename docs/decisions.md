@@ -1511,3 +1511,45 @@ Qualification: all five final regressions fail on the original parser (5 failed,
 graph test incorrectly assumed one RunMarker; inspection of open_pr:164,179 proves the intended
 issue/PR copies. The final test requires both copies, their identical contents and both unchanged
 snapshots, and was independently re-proved red on the original parser. Existing tests stay intact.
+
+## D-046 — Bounded complete path scan for the OpenClaw baseline
+
+The first real OC2-276 run used clean merged main9e9e7ff. Intake correctly froze three criteria;
+open_pr failed in GitWorkspace.prepare/_safe_links because Git's NUL-delimited all-path listing
+was65,756 bytes, exceeding ordinary subprocess capture's65,536-byte bound. The existing refusal
+is correct: clipped metadata cannot drive filesystem checks. The clean checkout remains at
+4297cd11540bfb0022efb146f5e531b0e10a55d4, with no remote task branch, PR or paid agent turn.
+Evidence: the run's events.jsonl:10–15 and the
+[bootstrap failure receipt](https://github.com/bodegus/openclaw2-deploy/issues/276#issuecomment-6227756857).
+
+Extend the existing standard-library subprocess capture with an explicit metadata_stdout flag,
+selecting a fixed1MiB stdout ceiling. Only the complete _safe_links listing opts in. Stderr,
+ordinary command logs and every other Git call retain64KiB capture. Both modes redact before
+clipping, bound redaction expansion, mark incomplete output and kill owned descendants as before.
+_checked still refuses a truncated stream; _paths still refuses redacted/ambiguous names. This
+adds no dependency, service client, agent step, graph route, global-config setting or arbitrary
+caller-selected limit. One1MiB path scan comfortably covers this baseline while keeping memory
+bounded; a larger scan is refused rather than silently skipping paths. Revisit if real task
+baselines exceed this separate bound; never bypass symlink checks or parse a clipped list.
+
+Red-first synthetic local repositories reproduce preparation failure with >64KiB of tracked
+paths and an escaping symlink sorted at the end. The fix must allow the complete safe baseline
+and reject that late symlink. Subprocess tests prove metadata stdout completeness, unchanged
+stderr bounds, and truncation after either raw overflow or redaction expansion. Existing64KiB
+capture, credential, timeout, untracked-list truncation and symlink assertions stay unchanged.
+
+The paused ask is node_error, outside issue9's delegated transient/head_moved policy. Alex then
+explicitly requested "can you try again to complete the task with the workflow"; the target
+issue comment records authorization for one retry of this current bootstrap failure only after
+this fix independently merges. No answer, protected approval, abort, merge, native acceptance,
+release, deployment or broader deterministic retry is authorized. Keep the original issue and
+intake snapshot; never erase the failure or run this branch as the live harness.
+
+A read-only local adapter check on the unchanged workflow checkout confirms the boundary:
+ordinary stdout capture returns65,536 bytes/truncated=true; explicit metadata capture returns
+all65,756 bytes/1,523 paths/truncated=false. It uses no token, network, controller run or target
+mutation. Synthetic focused tests pass56 cases/15.76s; all five new cases were first observed
+failing on the old implementation (5 failed,22 deselected/1.25s).
+
+Full `make check` passes1102 units,6 live deselected,95.34% coverage in464.45s. Lint,
+format and strict mypy pass; all existing bounded-capture and workspace assertions remain intact.

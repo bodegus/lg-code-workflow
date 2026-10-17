@@ -200,3 +200,47 @@ async def test_capture_limit_also_bounds_redaction_expansion(tmp_path: Path) -> 
     assert result.code == 0 and len(result.out.encode()) <= 65536
     assert result.out.startswith("HEAD") and result.out.endswith("TAIL")
     assert "capture truncated" in result.out
+
+
+@pytest.mark.unit
+async def test_metadata_stdout_is_complete_while_stderr_remains_bounded(tmp_path: Path) -> None:
+    import sys
+
+    from lgcw.git.run import run_process
+
+    result = await run_process(
+        (
+            sys.executable,
+            "-c",
+            "import os; os.write(1,b'A'*100000); os.write(2,b'B'*100000)",
+        ),
+        cwd=tmp_path,
+        metadata_stdout=True,
+    )
+    assert result.code == 0 and result.out == "A" * 100000
+    assert len(result.err.encode()) <= 65536 and "capture truncated" in result.err
+    assert result.capture_truncated
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("expansion", [False, True])
+async def test_metadata_stdout_limit_still_refuses_incomplete_capture(
+    tmp_path: Path, expansion: bool
+) -> None:
+    import sys
+
+    from lgcw.git.run import run_process
+
+    # Redaction expansion is bounded too; a short Authorization line expands to a marker.
+    output = "authorization:x\n" * 50000 if expansion else "A" * (1048576 + 1)
+    path = tmp_path / "output.txt"
+    path.write_text(output)
+    result = await run_process(
+        (sys.executable, "-c", "from pathlib import Path; print(Path('output.txt').read_text())"),
+        cwd=tmp_path,
+        metadata_stdout=True,
+    )
+    assert result.code == 0 and result.capture_truncated
+    assert len(result.out.encode()) <= 1048576 and "capture truncated" in result.out
+    if expansion:
+        assert "[REDACTED]" in result.out and "authorization:x" not in result.out

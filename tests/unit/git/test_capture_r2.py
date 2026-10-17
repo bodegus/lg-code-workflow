@@ -76,3 +76,33 @@ def test_ordinary_task_paths_are_not_mistaken_for_embedded_api_keys(text: str) -
     from lgcw.runlog import redact
 
     assert redact(text) == text
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("escaping_link", [False, True])
+async def test_prepare_checks_complete_large_tracked_path_list(
+    tmp_path: Path, escaping_link: bool
+) -> None:
+    from lgcw.git.run import git
+    from tests.unit.git.helpers import checked
+
+    remote = await origin(tmp_path)
+    for index in range(1000):
+        (remote.seed / (f"tracked-{index:04d}-" + "x" * 80)).write_text("fixture\n")
+    if escaping_link:
+        (remote.seed / "zzzz-escape").symlink_to(tmp_path / "outside")
+    await checked(remote.seed, "add", "-A")
+    await checked(remote.seed, "commit", "-m", "large tracked baseline")
+    await checked(remote.seed, "push", "origin", "main")
+    # The ordinary log capture remains bounded and cannot safely supply this listing.
+    listing = await git("ls-files", "--cached", "-z", cwd=remote.seed)
+    assert listing.code == 0 and listing.capture_truncated
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    issue = IssueRef(repo="fixture/sandbox", number=7)
+    if escaping_link:
+        with pytest.raises(ValueError, match="symlink escapes checkout: zzzz-escape"):
+            await workspace.prepare(policy(), issue, "lgcw/issue-7")
+    else:
+        info = await workspace.prepare(policy(), issue, "lgcw/issue-7")
+        assert info.branch == "lgcw/issue-7"
+        assert (info.repo_dir / ("tracked-0999-" + "x" * 80)).read_text() == "fixture\n"

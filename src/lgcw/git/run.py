@@ -61,19 +61,22 @@ def _secrets(env: Mapping[str, str]) -> tuple[str, ...]:
 
 
 _CAPTURE_BYTES = 65536
+_METADATA_STDOUT_BYTES = 1048576
 
 
-def _capture(stream: BinaryIO, safe: Callable[[bytes], str], overlap: int) -> CapturedStream:
+def _capture(
+    stream: BinaryIO, safe: Callable[[bytes], str], overlap: int, limit: int = _CAPTURE_BYTES
+) -> CapturedStream:
     """Read a bounded snapshot and redact overlapping windows before clipping."""
     descriptor = stream.fileno()
     size = os.fstat(descriptor).st_size
-    if size <= _CAPTURE_BYTES:
+    if size <= limit:
         encoded = safe(os.pread(descriptor, size, 0)).encode()
-        if len(encoded) <= _CAPTURE_BYTES:
+        if len(encoded) <= limit:
             return CapturedStream(text=encoded.decode(), truncated=False)
         marker_bytes = b"\n[... capture truncated after redaction ...]\n"
-        head = (_CAPTURE_BYTES - len(marker_bytes)) // 2
-        tail = _CAPTURE_BYTES - len(marker_bytes) - head
+        head = (limit - len(marker_bytes)) // 2
+        tail = limit - len(marker_bytes) - head
         return CapturedStream(
             text=(
                 encoded[:head].decode(errors="ignore")
@@ -83,8 +86,8 @@ def _capture(stream: BinaryIO, safe: Callable[[bytes], str], overlap: int) -> Ca
             truncated=True,
         )
     marker = f"\n[... capture truncated; original stream {size} bytes ...]\n"
-    head = (_CAPTURE_BYTES - len(marker.encode())) // 2
-    tail = _CAPTURE_BYTES - len(marker.encode()) - head
+    head = (limit - len(marker.encode())) // 2
+    tail = limit - len(marker.encode()) - head
     # Positional reads do not move a still-live escaped writer's shared file offset.
     # Overlap keeps a credential straddling either clip boundary whole for redaction.
     prefix_bytes = safe(os.pread(descriptor, head + 2 * overlap, 0)).encode()
@@ -105,8 +108,13 @@ async def run_process(
     cwd: Path,
     env: Mapping[str, str] | None = None,
     timeout_s: float = 120,
+    metadata_stdout: bool = False,
 ) -> GitResult:
-    """Run bounded argv and stop its owned process group on every exit path."""
+    """Run bounded argv and stop its owned process group on every exit path.
+
+    Metadata stdout opts into a fixed 1 MiB capture; stderr and ordinary logs stay at 64 KiB.
+    Both modes redact before clipping and explicitly report incomplete capture.
+    """
     environment = _environment(env)
     secrets = _secrets(environment)
     if any(redact(argument) != argument for argument in argv) or any(
@@ -164,7 +172,9 @@ async def run_process(
             kill()
         overlap = max((len(secret.encode()) for secret in secrets), default=0) + 1024
         captured_out, captured_err = (
-            _capture(stdout, safe, overlap),
+            _capture(
+                stdout, safe, overlap, _METADATA_STDOUT_BYTES if metadata_stdout else _CAPTURE_BYTES
+            ),
             _capture(stderr, safe, overlap),
         )
         return GitResult(
@@ -177,7 +187,11 @@ async def run_process(
 
 
 async def git(
-    *args: str, cwd: Path, env: Mapping[str, str] | None = None, timeout_s: float = 120
+    *args: str,
+    cwd: Path,
+    env: Mapping[str, str] | None = None,
+    timeout_s: float = 120,
+    metadata_stdout: bool = False,
 ) -> GitResult:
     """Run git with hooks/fsmonitor disabled, no prompts and a bounded lifetime."""
     return await run_process(
@@ -185,4 +199,5 @@ async def git(
         cwd=cwd,
         env=env,
         timeout_s=timeout_s,
+        metadata_stdout=metadata_stdout,
     )
