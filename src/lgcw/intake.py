@@ -8,10 +8,11 @@ _HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
 _SECTION = re.compile(r"^(acceptance criteria|done when|definition of done|expected)\s*:?$", re.I)
 _ITEM = re.compile(r"^\s*(?:[-*+]\s+(?:\[[ xX]\]\s*)?|\d+[.)]\s+)(.+)$")
 _CHECKBOX = re.compile(r"^\s*[-*+]\s+\[ \]\s+(.+)$")
+_SECTION_CHECKBOX = re.compile(r"^\s*[-*+]\s+\[[ xX]\]\s+(.+)$")
 
 
 def extract_acceptance_criteria(body: str) -> tuple[str, ...]:
-    """Return a named nonempty section's items, or unchecked checklist items as fallback."""
+    """Prefer a named section's checklist, then its items, then unchecked items elsewhere."""
     visible: list[str] = []
     fence: tuple[str, int] | None = None
     for line in body.splitlines():
@@ -45,6 +46,8 @@ def extract_acceptance_criteria(body: str) -> tuple[str, ...]:
             continue
         level = len(heading.group(1))
         items: list[str] = []
+        checkbox_items: list[str] = []
+        checkbox_continuation = False
         paragraph: list[str] = []
         for content in visible[index + 1 :]:
             next_heading = _HEADING.match(content)
@@ -52,15 +55,22 @@ def extract_acceptance_criteria(body: str) -> tuple[str, ...]:
                 break
             item = _ITEM.match(content)
             if item is not None or not content.strip() or next_heading is not None:
+                checkbox_continuation = False
                 if paragraph:
                     items.append(" ".join(paragraph))
                     paragraph = []
                 if item is not None:
                     items.append(item.group(1).strip())
+                    checkbox = _SECTION_CHECKBOX.match(content)
+                    if checkbox is not None:
+                        checkbox_items.append(checkbox.group(1).strip())
+                        checkbox_continuation = True
             else:
                 paragraph.append(content.strip())
+                if checkbox_continuation:
+                    checkbox_items[-1] += " " + content.strip()
         if paragraph:
             items.append(" ".join(paragraph))
         if items:
-            return tuple(items)
+            return tuple(checkbox_items or items)
     return tuple(match.group(1).strip() for line in visible if (match := _CHECKBOX.match(line)))

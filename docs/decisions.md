@@ -1480,3 +1480,34 @@ Local config qualification: `uv run lgcw doctor --repo bodegus/openclaw2-deploy`
 checks (gh/git/uv/uvx, owner login, sandbox login denial and dedicated Codex login). Full
 `make check` passes1092 units,6 live deselected,95.33% coverage in535.01s. Real CI specimen
 38967800886 reports lint,validate,unit all successful. No paid target turn has started.
+
+## D-045 — Explicit checklists define criteria inside a named acceptance section
+
+The unchanged openclaw2-deploy#276 has three `Done when` checkboxes followed by a separate
+post-release reviewer paragraph and signature. The existing deterministic extractor freezes all
+five as criteria, contradicting Alex's explicit three-criterion execution scope (D-044).
+Prefer the named section's explicit checkbox items when present, including checked items as
+before. Keep immediately wrapped text with its checkbox until a blank line, another list item or
+heading. Ordinary prose and non-checkbox bullets in that section are then context, not additional
+criteria. Sections without checkboxes retain their existing bullet/numbered/paragraph behavior;
+the no-named-section fallback remains unchecked checkboxes only. Existing fence, HTML-comment,
+indented-code and section-boundary filtering stays in place.
+
+This is a small correction to the existing standard-library `re` parser, with no new dependency,
+helper client, agent call, graph route or authorization rule. Four synthetic table cases fail on
+the old extractor; a compiled-graph regression also fails because its durable RunMarker freezes
+five criteria. The graph regression asserts that the original issue body is retained verbatim
+in the snapshot. Do not rewrite the live issue, filter specific reviewer words, or use an owner
+answer to conceal the extraction bug. Revisit if explicit acceptance criteria require mixed
+checkbox and prose semantics; such a change needs a documented rule and regression evidence.
+
+The config prerequisite PR14 merged as6c38551119087495e056a6129aed16daad06a42c. This source fix
+must independently merge before running the paid target workflow. Only pure local extraction and
+fake-port tests run on this branch; no live target turn is authorized from unmerged harness code.
+
+Qualification: all five final regressions fail on the original parser (5 failed,56 deselected,
+0.55s). All61 focused parser/intake-graph cases pass (21.98s). Full `make check` passes1097 units,
+6 live deselected,95.34% coverage (568.10s), with100% coverage of the intake module. The initial
+graph test incorrectly assumed one RunMarker; inspection of open_pr:164,179 proves the intended
+issue/PR copies. The final test requires both copies, their identical contents and both unchanged
+snapshots, and was independently re-proved red on the original parser. Existing tests stay intact.

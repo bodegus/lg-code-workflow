@@ -41,3 +41,44 @@ from lgcw.intake import extract_acceptance_criteria
 )
 def test_extract_acceptance_criteria(body: str, expected: tuple[str, ...]) -> None:
     assert extract_acceptance_criteria(body) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        (
+            "## Done when\n\n"
+            "- [ ] Names refused arguments.\n"
+            "- [ ] Documents each operation.\n"
+            "- [ ] Tests three invalid shapes.\n\n"
+            "After merge and release (reviewer, not builder): perform a live update.\n\n"
+            "-reviewer\n",
+            (
+                "Names refused arguments.",
+                "Documents each operation.",
+                "Tests three invalid shapes.",
+            ),
+        ),
+        (
+            "## Acceptance criteria\nIntroductory notes.\n\n"
+            "- [x] Existing result.\n- [ ] Remaining result.\n\nOwner follow-up.\n\n-owner",
+            ("Existing result.", "Remaining result."),
+        ),
+        (
+            "## Done when\n- [ ] Implement this.\n"
+            "```md\n- [ ] Not a real criterion.\n```\n\nReviewer follow-up.\n"
+            "## Later\n- [ ] Separate work.",
+            ("Implement this.",),
+        ),
+        (
+            "## Done when\n- [ ] Names refused arguments\n  without exposing values.\n\n"
+            "Reviewer release follow-up.",
+            ("Names refused arguments without exposing values.",),
+        ),
+    ],
+)
+def test_checkbox_section_excludes_non_checklist_prose(
+    body: str, expected: tuple[str, ...]
+) -> None:
+    assert extract_acceptance_criteria(body) == expected

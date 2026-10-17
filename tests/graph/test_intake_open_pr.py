@@ -316,3 +316,30 @@ async def test_human_head_adoption_is_exact_and_durable(
     before = writes(case)
     await case.run()
     assert writes(case) == before
+
+
+@pytest.mark.unit
+async def test_checkbox_criteria_freeze_without_reviewer_followup(graph_case: GraphCase) -> None:
+    case = graph_case
+    key = (case.ctx.issue_ref.repo, case.ctx.issue_ref.number)
+    body = (
+        "## Done when\n"
+        "- [ ] Names refused arguments.\n"
+        "- [ ] Documents each operation.\n"
+        "- [ ] Tests three invalid shapes.\n\n"
+        "After merge and release (reviewer, not builder): perform a live update.\n\n"
+        "-reviewer\n"
+    )
+    case.github.issues[key] = case.github.issues[key].model_copy(update={"body": body})
+    assert await case.run() == "waiting"
+    recorded = markers(case, "run")
+    # open_pr records the same frozen intake on the issue and on its new PR.
+    assert len(recorded) == 2 and recorded[0] == recorded[1]
+    for run in recorded:
+        assert isinstance(run, RunMarker)
+        assert run.criteria == (
+            "Names refused arguments.",
+            "Documents each operation.",
+            "Tests three invalid shapes.",
+        )
+        assert run.snapshot is not None and run.snapshot.body == body
