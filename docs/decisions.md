@@ -1724,3 +1724,19 @@ agent service or dependency is not needed. Revisit only through a recorded owner
 three revisions, eligibility or review allowance needs to change. Preparation itself executes
 no oc2 workflow or owner command. P3's larger integrated diff was reported on issue19 before
 building (comment6235544195); P1/P2 were independently merged first.
+
+P3 review R1 clarified that revision intent outlives a later retry command ID. Derive an active
+revision from the authenticated ledger until a successful, done, feedback-free BuildMarker is
+explicitly associated with its ack (`revision_id`, backwards-compatible nullable field). Auth,
+quota, session-loss, unknown paid dispatch and explicitly adopted-head continuations retain
+that frozen owner-feedback fence. Resumed builds reconstruct intent themselves, independent of
+which command is latest; gate/CI feedback and current findings remain separate. Readiness stays
+draft/cleared while intent is active, including after owner-authorized adoption. Completed build
+recovery still outranks stale ready/CI facts, including a changed adopted parent. If revision
+text is unavailable, ask instead of producing a revision-less fix turn.
+
+A revise is not protected-path revocation: ignore it in the existing later-command revocation
+set. This includes issue-thread revise, which is ignored entirely. A different protected tree
+still fails the original approval fingerprint and asks naturally; no approval policy is widened.
+R1's nonblocking command/cap/body/mutation observations are recorded in the Hardening backlog,
+not silently implemented here. No target workflow or owner command was run during this fix.

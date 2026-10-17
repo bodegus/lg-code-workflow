@@ -11,6 +11,7 @@ from lgcw.graph.context import RunContext
 from lgcw.graph.nodes.common import attention, finish_command, labels, observe, post_once, sanitized
 from lgcw.graph.reconcile import ReconcileView, next_step
 from lgcw.ledger.commands import owner_commands
+from lgcw.models.github import PrSnapshot
 from lgcw.models.issue import IntakeResult
 from lgcw.models.ledger import (
     AckMarker,
@@ -33,6 +34,40 @@ def latest_owner_answer(run: RunMarker | None, acks: Sequence[AckMarker]) -> str
         ),
         run.owner_answer if run else None,
     )
+
+
+async def resume_revision(
+    ctx: RunContext, pr: PrSnapshot | None, *, waiting: bool = False
+) -> dict[str, Any] | None:
+    """Keep accepted intent draft and recover it independently of a later retry ack."""
+    if pr is None:
+        return None
+    obs = await observe(ctx, pr)
+    revision = obs.ledger.active_revision()
+    if revision is None:
+        return None
+    if revision.command_snapshot is None:
+        return attention(
+            "revision_evidence_missing",
+            "Active revision text is missing; inspect the ack.",
+            "reconcile",
+        )
+    current = await ctx.github.get_pr(ctx.issue_ref.repo, pr.number)
+    if not current.is_draft:
+        await ctx.github.mark_draft(pr.node_id)
+    await labels(ctx, pr.number, (), ("lgcw:merge-ready",))
+    if waiting:
+        return {}
+    push = obs.ledger.last_push()
+    if (
+        push is None
+        or current.head_sha != push.head_sha
+        or await ctx.github.branch_head(ctx.issue_ref.repo, pr.head_ref) != push.head_sha
+    ):
+        return attention(
+            "head_moved", "Active revision requires the current owned head.", "reconcile"
+        )
+    return {"next_step": "build"}
 
 
 async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, Any]:
@@ -136,6 +171,9 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
             if pr is None:
                 raise ValueError("revision requires a PR")
             revised_pr = await ctx.github.get_pr(ctx.issue_ref.repo, pr.number)
+            if not revised_pr.is_draft:
+                await ctx.github.mark_draft(pr.node_id)
+            await labels(ctx, pr.number, (), ("lgcw:merge-ready",))
             if (
                 revised_pr.head_sha != ack.head_sha
                 or await ctx.github.branch_head(ctx.issue_ref.repo, pr.head_ref) != ack.head_sha
@@ -143,8 +181,6 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
                 return fields | attention(
                     "head_moved", "Head changed after revision acknowledgement.", "reconcile"
                 )
-            if not revised_pr.is_draft:
-                await ctx.github.mark_draft(pr.node_id)
             fields.update(
                 owner_answer=None,
                 feedback=Feedback(
@@ -177,7 +213,8 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
             await finish_command(ctx, continuation, number)
             fields["owner_command"] = None
         if ack.step != "reconcile":
-            return fields | {"next_step": ack.step}
+            revision = await resume_revision(ctx, pr) if command.verb != "abort" else None
+            return fields | (revision or {"next_step": ack.step})
         continuation = RunState.model_validate(state.model_dump() | fields)
         await finish_command(ctx, continuation, number)
         fields["owner_command"] = None
@@ -186,6 +223,9 @@ async def reconcile(state: RunState, runtime: Runtime[RunContext]) -> dict[str, 
         outcome = next_step(
             ReconcileView(issue=current, pr=pr, ledger=obs.ledger, threads=obs.threads, commands=())
         )
+    revision = await resume_revision(ctx, pr, waiting=outcome.reason == "waiting")
+    if revision:
+        return fields | revision
     if outcome.reason == "waiting":
         await labels(ctx, number, ("lgcw:waiting",), ("lgcw:active", "lgcw:merge-ready"))
         return fields | {"next_step": "end", "outcome": "waiting"}

@@ -26,6 +26,7 @@ RETRY_POLICIES: Mapping[str, BuildRetryPolicy] = MappingProxyType(
         "build_evidence_missing": "rebuild",
         "local_head_changed": "inspect",
         "handoff_too_large": "inspect",
+        "revision_evidence_missing": "inspect",
         "node_error": "resume",
     }
 )

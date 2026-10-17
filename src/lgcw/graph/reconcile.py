@@ -8,6 +8,7 @@ from lgcw.models.issue import IssueSnapshot
 from lgcw.models.ledger import (
     AckMarker,
     AskMarker,
+    BuildMarker,
     Command,
     FindingMarker,
     PrLedger,
@@ -170,7 +171,13 @@ def next_step(view: ReconcileView) -> ReconcileOutcome:
         )
     if revisions and isinstance(revisions[-1].marker, AckMarker):
         revision_ack = revisions[-1].marker
-        if revision_ack.head_sha == pr.head_sha and (
+        related_build = any(
+            isinstance(entry.marker, BuildMarker)
+            and revision_ack.command_id in {entry.marker.command_id, entry.marker.revision_id}
+            and entry.marker.parent_sha == pr.head_sha
+            for entry in ledger.entries
+        )
+        if (revision_ack.head_sha == pr.head_sha or related_build) and (
             ready is None or revisions[-1].comment_id > ready.comment_id
         ):
             return route("build", "recover owner revision before stale readiness")

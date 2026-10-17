@@ -115,9 +115,13 @@ async def check_work_claims(
             approved_ack = latest
     revocation = None
     if approved_ack is not None:
-        later = owner_commands(
-            observations.comments, ctx.repo.allowed_authors, approved_ack.command_id
-        )
+        later = [
+            command
+            for command in owner_commands(
+                observations.comments, ctx.repo.allowed_authors, approved_ack.command_id
+            )
+            if command.verb != "revise"
+        ]
         if later:
             command = next((command for command in later if command.verb == "abort"), later[-1])
             revocation = ApprovalRevocation(seq=approved_ack.seq, command=sanitized(command))

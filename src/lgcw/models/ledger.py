@@ -115,6 +115,7 @@ class BuildMarker(Strict):
     source: BuildSource
     publish_source: BuildSource | None = None
     pending_feedback: Feedback | None = None
+    revision_id: int | None = None
     phase: Literal["intent", "complete"]
     command_id: int | None
     handoff: BuildHandoff | None
@@ -428,6 +429,32 @@ class PrLedger(Strict):
             for entry in self.entries
             if isinstance(entry.marker, ReviewMarker) and entry.marker.head_sha == head_sha
         ]
+
+    def active_revision(self) -> AckMarker | None:
+        """Recover frozen revision intent until its own successful handoff exists."""
+        entry = next(
+            (
+                entry
+                for entry in reversed(self.of_kind("ack"))
+                if isinstance(entry.marker, AckMarker) and entry.marker.verb == "revise"
+            ),
+            None,
+        )
+        if entry is None or not isinstance(entry.marker, AckMarker):
+            return None
+        revision = entry.marker
+        fulfilled = any(
+            isinstance(later.marker, BuildMarker)
+            and later.comment_id > entry.comment_id
+            and revision.command_id in {later.marker.command_id, later.marker.revision_id}
+            and later.marker.phase == "complete"
+            and later.marker.error is None
+            and later.marker.handoff is not None
+            and later.marker.handoff.status == "done"
+            and later.marker.feedback is None
+            for later in self.entries
+        )
+        return None if fulfilled else revision
 
     def counts(self) -> LedgerCounts:
         """Recompute all activity counts from markers, without mutating the ledger."""

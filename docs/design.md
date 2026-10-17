@@ -139,7 +139,11 @@ is null when no ask exists. Three distinct accepted revise acks exhaust the per-
 a fourth asks `revise_limit` without dispatching. Revision grants no head adoption or protected-path
 approval. An unowned head must be inspected/adopted separately through the existing owner retry.
 The draft/label writes recover by observation; the old ready receipt cannot terminate an unfinished
-revision. Paid dispatch uncertainty still asks rather than replaying. Each accepted revision adds
+revision. Active revision intent is reconstructed independently of the latest command ack, until
+a successful done BuildMarker associated by revision_id (or the original command_id) exists.
+Retries after unknown dispatch, quota/auth/session loss or explicit head adoption keep its frozen
+fenced text and draft/readiness invalidation. Revise is never an approval-revocation command;
+a different protected tree still needs its own fingerprint-bound approval. Paid dispatch uncertainty still asks rather than replaying. Each accepted revision adds
 the normal two-review allowance, bounded by the three-revision cap (D-050).
 
 Each applied command gets an `ack` marker, so it is applied once. `LedgerCounts.retry_grants`
@@ -369,6 +373,7 @@ The exhaustive code table is `graph/retry.py`:
 | Ask code | Continuation |
 |---|---|
 | build_unknown, harness_auth, harness_quota, harness_error, node_error | Resume one explicitly authorized turn; preserve pending failure evidence. |
+| revision_evidence_missing | Inspect missing authenticated revision evidence; retry cannot dispatch without its frozen text. |
 | handoff_incomplete | Resume with current clarification; owner feedback is not persisted as pending failure evidence. |
 | protected_path | Exact bound approval of unchanged builder bytes goes directly to gate; denial or changed bytes cannot use an older approval. |
 | gate_fix_limit, no_changes | One additional resumed fix; do not force a competing fresh-restart question. |

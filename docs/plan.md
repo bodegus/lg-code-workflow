@@ -756,3 +756,9 @@ criteria. New ownership/redaction/body-source tests are backed by fourteen indep
 failures. Setup tails stay local. D-033 and the review-mutations spike retain the evidence.
 
 - [ ] **P2 reviewer carry:** add remote-only and PR-only foreign-head regressions so each post-push ownership guard fails independently under mutation (PR21 review6235526978). Separate follow-up; not a long-run prerequisite.
+
+- [ ] **P3 reviewer carry AA-3:** consume a non-counting fourth-revise rejection and repair merge-ready labels on unchanged ready heads after retry, avoiding repeated revise_limit asks.
+- [ ] **P3 reviewer carry AA-4/AA-5/AA-6:** decide preservation of earlier owner answers, observable receipts for ignored in-flight revise comments, and cap/review allowance accounting for post-ack head refusal.
+- [ ] **P3 reviewer carry F3/F5/F6/F7:** strengthen independent mutation probes for frozen head binding, ack-on-PR, AckMarker validation and owner-answer handling (PR22 review6236536562).
+- [ ] **P3 reviewer carry F8:** make the PR body reflect revision-in-progress instead of old-head green CI. Active-revision retry now keeps draft/clears readiness; body rendering remains separate.
+- [ ] **P3 reviewer carry F9/F10:** tighten indented/signature-only command parsing and decide no-change revise budget accounting; current behavior stays bounded.

@@ -102,6 +102,7 @@ def render_fix_turn(
     open_findings: Sequence[GatedFinding],
     handoff: BuildHandoff | None,
     owner_answer: str | None,
+    owner_feedback: str | None = None,
 ) -> TurnInput:
     """Restate every criterion, open finding and latest failure for a resumed builder."""
     return _turn(
@@ -114,7 +115,7 @@ def render_fix_turn(
             "previous_handoff": handoff.model_dump(mode="json") if handoff else None,
         },
         owner_answer,
-        feedback.data if feedback.source == "owner" else None,
+        owner_feedback or (feedback.data if feedback.source == "owner" else None),
     )
 
 
@@ -125,6 +126,7 @@ def render_restart_turn(
     open_findings: Sequence[GatedFinding],
     feedback: Feedback | None,
     owner_answer: str | None = None,
+    owner_feedback: str | None = None,
 ) -> TurnInput:
     """Seed a fresh builder using all durable context without requiring old conversation history."""
     return _turn(
@@ -139,7 +141,8 @@ def render_restart_turn(
             "owner_answer": owner_answer,
         },
         owner_answer,
-        feedback.data if feedback is not None and feedback.source == "owner" else None,
+        owner_feedback
+        or (feedback.data if feedback is not None and feedback.source == "owner" else None),
     )
 
 
