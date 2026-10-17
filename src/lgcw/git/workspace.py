@@ -595,9 +595,11 @@ class GitWorkspace(WorkspacePort):
         )
         await self._checked(checkout, "checkout", "--detach", head_sha)
         await self._safe_links(checkout)
-        head_paths = await self._paths(checkout, "ls-tree", "-r", "--name-only", "-z", head_sha)
+        head_paths = await self._paths(
+            checkout, "ls-tree", "-r", "--name-only", "-z", head_sha, metadata_stdout=True
+        )
         base_paths = await self._paths(
-            checkout, "ls-tree", "-r", "--name-only", "-z", _sha(base_sha)
+            checkout, "ls-tree", "-r", "--name-only", "-z", _sha(base_sha), metadata_stdout=True
         )
         # Delete instruction roots shallowest first; unlink symlinks instead of following them.
         roots: set[Path] = set()

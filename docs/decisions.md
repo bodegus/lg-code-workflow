@@ -1553,3 +1553,39 @@ failing on the old implementation (5 failed,22 deselected/1.25s).
 
 Full `make check` passes1102 units,6 live deselected,95.34% coverage in464.45s. Lint,
 format and strict mypy pass; all existing bounded-capture and workspace assertions remain intact.
+
+## D-047 — Complete reviewer head/base trees use the existing bounded metadata mode
+
+PR16's fixed1MiB _safe_links scan resolved bootstrap. The resumed real run created target PR280
+at357d3e576490ef41eba646b4291d79ab8309b8a0, passed the host gate146 tests/Ruff and required CI,
+then stopped before dispatching a reviewer: reviewer_checkout's head ls-tree was still captured
+with the ordinary64KiB bound (workspace.py:598, events.jsonl:51). The base enumeration has the
+same requirement. The assumption that _safe_links was the only complete-repository listing was
+incomplete. The two-failure stop and exact diagnosis are recorded in
+[target PR280](https://github.com/bodegus/openclaw2-deploy/pull/280#issuecomment-6233179613).
+
+Alex then explicitly permitted resuming280 once set, restarting the bounded follow-up and
+allowing one retry of seq3/review/node_error after a qualified independent merge. The
+[delegation receipt](https://github.com/bodegus/openclaw2-deploy/pull/280#issuecomment-6233220427)
+precedes any new retry. Existing bootstrap and head_moved retries remain consumed. This grants
+no answer, protected approval, abort, merge, native acceptance, release or deployment authority.
+The target reviewer separately controls merge order279→280→277→271 and full native acceptance
+only when280 is next and current with main; final-head first-attempt scope=all remains required.
+
+Opt only reviewer_checkout's complete head/base ls-tree listings into the existing fixed1MiB
+metadata stdout mode. No new capture mode, bound, dependency, protocol or graph route is added.
+Ordinary Git reads, stderr and command logs retain64KiB; _checked still refuses any truncation,
+_paths refuses redacted/ambiguous names, and instruction roots are restored from trusted base.
+The existing symlink and instruction-parent alias checks remain unchanged. Revisit if real tree
+listings exceed1MiB; never parse clipped metadata or bypass instruction isolation.
+
+Four new synthetic real-Git regressions fail before the fix (4 failed,11 deselected,4.52s).
+They independently cover large head, large base with small head, both large, and a large-tree
+head replacing a trusted instruction parent with an internal symlink alias. Successful cases
+require trusted root/nested skills and instructions, removal of head-only .codex configuration,
+retained head product code and exact detached HEAD. The alias case must reach its specific
+base-instruction-parent refusal. Every existing assertion, fixture and timeout stays intact.
+
+Qualification: all60 focused subprocess/capture/workspace cases pass (25.38s); full
+`make check` passes1106 units,6 live deselected,95.34% coverage in539.77s. Lint, format and
+strict mypy pass. No live controller or paid turn ran from this unmerged source.

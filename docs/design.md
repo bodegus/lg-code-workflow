@@ -584,9 +584,9 @@ directory (including the `gh` login), and the builder has network access. Still 
 in the Codex environment, in argv, in `.git/config` or in logs; `.git` read-only for the builder;
 reviewers read-only on independent detached clones with base instruction overlays; checkout
 symlink escapes and instruction-parent aliases are rejected; the complete all-path symlink scan
-uses bounded1MiB stdout capture, while ordinary logs/stderr and other Git reads retain64KiB.
-Truncated metadata and redacted/ambiguous machine paths are refused (D-046); owner-only commands;
-untrusted text fenced; hooks disabled for host git
+and reviewer head/base tree listings use bounded1MiB stdout capture, while ordinary logs/stderr
+and other Git reads retain64KiB. Truncated metadata and redacted/ambiguous machine paths are refused
+(D-046, D-047); owner-only commands; untrusted text fenced; hooks disabled for host git
 (`-c core.hooksPath=/dev/null`). Phase 2 targets: GitHub App identity, egress allowlist,
 Docker sandbox or Codex `exec-server` split, deny-read on `CODEX_HOME`.
 
