@@ -90,23 +90,35 @@ class GitWorkspace(WorkspacePort):
             raise RuntimeError("GitWorkspace remote needs a token provider")
         return PushAuth(token=SecretStr(self._tokens.token())).env()
 
-    async def _checked(self, cwd: Path, *args: str, env: Mapping[str, str] | None = None) -> str:
-        result = await git(*args, cwd=cwd, env=env)
+    async def _checked(
+        self,
+        cwd: Path,
+        *args: str,
+        env: Mapping[str, str] | None = None,
+        metadata_stdout: bool = False,
+    ) -> str:
+        result = await git(*args, cwd=cwd, env=env, metadata_stdout=metadata_stdout)
         if result.code:
             raise RuntimeError(f"git {args[0]} failed ({result.code}): {result.err}")
         if result.capture_truncated:
             raise ValueError("git output capture was truncated; incomplete metadata is refused")
         return result.out.rstrip("\n")
 
-    async def _paths(self, cwd: Path, *args: str) -> tuple[str, ...]:
-        data = await self._checked(cwd, *args)
+    async def _paths(self, cwd: Path, *args: str, metadata_stdout: bool = False) -> tuple[str, ...]:
+        data = await self._checked(cwd, *args, metadata_stdout=metadata_stdout)
         if "[REDACTED]" in data:
             raise ValueError("redacted Git machine paths are ambiguous; refusing filesystem access")
         return tuple(path for path in data.split("\0") if path)
 
     async def _safe_links(self, cwd: Path) -> None:
         paths = await self._paths(
-            cwd, "ls-files", "--cached", "--others", "--exclude-standard", "-z"
+            cwd,
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            metadata_stdout=True,
         )
         for path in paths:
             candidate = cwd / path
