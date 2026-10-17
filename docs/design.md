@@ -262,6 +262,10 @@ Step details:
   marker. Before push, an independent checkout of the immutable candidate must match the gate's
   byte/mode/path fingerprint; changed work or foreign heads ask. Commit trailers and exact remote
   SHA recover lost commit/push responses, and the body has an atomic operation receipt (D-035).
+  After a successful or recovered push, allow at most10 seconds of bounded backoff for PR
+  metadata to name the exact candidate. Recheck the branch ref on every observation: a foreign
+  ref/PR SHA asks immediately, and stale-parent metadata at the deadline asks `head_moved`
+  (D-049). This loop never pushes or adopts a head.
   After a review fix: reply to each finding thread with the builder's disposition and fix
   SHA, then resolve it with the matching reason.
 - **ci_wait.** §8. Never waits on a SHA the workflow did not push.
