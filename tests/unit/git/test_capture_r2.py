@@ -106,3 +106,65 @@ async def test_prepare_checks_complete_large_tracked_path_list(
         info = await workspace.prepare(policy(), issue, "lgcw/issue-7")
         assert info.branch == "lgcw/issue-7"
         assert (info.repo_dir / ("tracked-0999-" + "x" * 80)).read_text() == "fixture\n"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "baseline_large,head_large,instruction_alias",
+    [(False, True, False), (True, False, False), (True, True, False), (True, True, True)],
+    ids=["large-head", "large-base", "large-both", "large-instruction-alias"],
+)
+async def test_large_review_trees_preserve_trusted_instruction_boundary(
+    tmp_path: Path, baseline_large: bool, head_large: bool, instruction_alias: bool
+) -> None:
+    import shutil
+
+    from lgcw.git.run import git
+    from tests.unit.git.helpers import checked
+
+    remote = await origin(tmp_path)
+    (remote.seed / "docs").mkdir()
+    (remote.seed / "docs/AGENTS.md").write_text("Trusted nested instructions.\n")
+    if baseline_large:
+        (remote.seed / "data").mkdir()
+        for index in range(1000):
+            (remote.seed / "data" / (f"tracked-{index:04d}-" + "x" * 80)).write_text("fixture\n")
+    await checked(remote.seed, "add", "-A")
+    await checked(remote.seed, "commit", "-m", "review baseline")
+    await checked(remote.seed, "push", "origin", "main")
+    base = await checked(remote.seed, "rev-parse", "HEAD")
+    workspace = GitWorkspace(tmp_path / "lgcw", origin=remote.bare)
+    issue = IssueRef(repo="fixture/sandbox", number=7)
+    info = await workspace.prepare(policy(), issue, "lgcw/issue-7")
+    if head_large and not baseline_large:
+        (info.repo_dir / "data").mkdir()
+        for index in range(1000):
+            (info.repo_dir / "data" / (f"tracked-{index:04d}-" + "x" * 80)).write_text("fixture\n")
+    elif baseline_large and not head_large:
+        shutil.rmtree(info.repo_dir / "data")
+    (info.repo_dir / "AGENTS.md").write_text("Hostile head instructions.\n")
+    (info.repo_dir / ".agents/guide.md").write_text("Hostile head skill.\n")
+    (info.repo_dir / ".codex").mkdir()
+    (info.repo_dir / ".codex/settings.json").write_text("{}\n")
+    (info.repo_dir / "app.py").write_text("VERSION = '0.1.1'\n")
+    if instruction_alias:
+        shutil.rmtree(info.repo_dir / "docs")
+        (info.repo_dir / "docs").symlink_to(".agents", target_is_directory=True)
+    # Fixture commits bypass the intentionally small changed-path task limit, not any review check.
+    await checked(info.repo_dir, "add", "-A")
+    await checked(info.repo_dir, "commit", "-m", "review head")
+    head = await checked(info.repo_dir, "rev-parse", "HEAD")
+    for revision, large in ((base, baseline_large), (head, head_large)):
+        ordinary = await git("ls-tree", "-r", "--name-only", "-z", revision, cwd=info.repo_dir)
+        assert ordinary.code == 0 and ordinary.capture_truncated == large
+    if instruction_alias:
+        with pytest.raises(ValueError, match="base instruction parent symlink"):
+            await workspace.reviewer_checkout(head, base)
+    else:
+        checkout = await workspace.reviewer_checkout(head, base)
+        assert (checkout / "AGENTS.md").read_text() == "Trusted base instructions.\n"
+        assert (checkout / ".agents/guide.md").read_text() == "Trusted skill.\n"
+        assert (checkout / "docs/AGENTS.md").read_text() == "Trusted nested instructions.\n"
+        assert not (checkout / ".codex").exists()
+        assert (checkout / "app.py").read_text() == "VERSION = '0.1.1'\n"
+        assert await checked(checkout, "rev-parse", "HEAD") == head
